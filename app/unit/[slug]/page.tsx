@@ -1,0 +1,500 @@
+"use client";
+
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useParams } from 'next/navigation';
+import { supabase } from '../../../lib/supabase';
+
+export function useIsomorphicLayoutEffect() {
+  return typeof window !== 'undefined' ? useEffect : () => {};
+}
+
+export default function UnitManagement() {
+  const params = useParams();
+  const slug = (params?.slug as string) || 'kuttab'; // masjid, kuttab, wakpro
+  const router = useRouter();
+
+  const [activeTab, setActiveTab] = useState<'masuk' | 'keluar' | 'laporan'>('masuk');
+  const [balance, setBalance] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [transactions, setTransactions] = useState<any[]>([]);
+
+  // State Form Kas Masuk Wakpro
+  const [wakproSource, setWakproSource] = useState('Wakpro BETA');
+  const [customWakpro, setCustomWakpro] = useState('');
+  const [donor, setDonor] = useState('');
+  
+  // State Form Kas Masuk Kuttab
+  const [kuttabSource, setKuttabSource] = useState('Kas Wakpro');
+  const [customKuttabSource, setCustomKuttabSource] = useState('');
+
+  // State Form Kas Masuk Masjid
+  const [masjidSource, setMasjidSource] = useState('Infaq Umum');
+
+  // State Umum Kas Masuk & Keluar
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+
+  // State Kas Keluar Wakpro
+  const [wakproCategory, setWakproCategory] = useState('Kas Kuttab');
+  const [receiver, setReceiver] = useState('');
+
+  // State Kas Keluar Kuttab
+  const [kuttabCategory, setKuttabCategory] = useState('KBM');
+
+  // State Kas Keluar Masjid
+  const [masjidCategory, setMasjidCategory] = useState('Operasional Masjid');
+
+  const unitNameMap: { [key: string]: string } = {
+    masjid: 'Kas Masjid',
+    kuttab: 'Kas Kuttab',
+    wakpro: 'Kas Wakpro'
+  };
+
+  const currentAccountName = unitNameMap[slug] || 'Kas Kuttab';
+  const displayTitle = slug === 'masjid' ? 'Kas Masjid' : slug === 'wakpro' ? 'Kas Wakaf Produktif (Wakpro)' : 'Kas Kuttab';
+
+  const kuttabExpenseCategories = [
+    'KBM', 'KBO', 'TU', 'ATK', 'RAKER', 'PERSIAPAN KELAS', 'MOKA', 
+    'SARANA PRASARANA', 'PEMBUKAAN TEMA', 'MABIT GURU', 'RAPAT', 
+    'DAUROH', 'PRAMABIT', 'KEMAH', 'MABIT SANTRI'
+  ];
+
+  const wakproSources = [
+    'Wakpro BETA', 'Wakpro OAE', 'Wakpro Tympano', 'Wakpro BERA', 
+    'Wakpro Tumbler', 'Infak Umum', 'Wakpro Lainnya'
+  ];
+
+  const wakproCategories = [
+    'Kas Kuttab', 'Operasional', 'Sarana dan Prasarana', "Ta'awun", 'Hadiah', 'Kafalah'
+  ];
+
+  useEffect(() => {
+    async function loadData() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      // Ambil Saldo Akun
+      const { data: accData } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('name', currentAccountName)
+        .limit(1);
+
+      if (accData && accData.length > 0) {
+        setBalance(Number(accData[0].balance));
+      }
+
+      // Ambil Riwayat Transaksi Unit Ini
+      const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
+      const { data: trxData } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('unit', unitLabel)
+        .order('created_at', { ascending: true });
+
+      if (trxData) setTransactions(trxData);
+      setLoading(false);
+    }
+    loadData();
+  }, [slug, router, successMsg]);
+
+  const handleKasMasuk = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+
+    const numericAmount = Number(amount);
+    if (numericAmount <= 0) {
+      setErrorMsg('Nominal harus lebih besar dari 0.');
+      setLoading(false);
+      return;
+    }
+
+    const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
+    let finalProgram = 'Infaq Umum';
+    let finalDesc = description;
+
+    if (slug === 'wakpro') {
+      finalProgram = wakproSource === 'Wakpro Lainnya' ? (customWakpro || 'Wakpro Lainnya') : wakproSource;
+      finalDesc = `Donatur/Muhsinin: ${donor || 'Hamba Allah'} - ${description}`;
+    } else if (slug === 'kuttab') {
+      finalProgram = kuttabSource === 'Kas Wakpro' ? 'Kas Wakpro' : (customKuttabSource || 'Lainnya');
+      
+      // Jika Kuttab masuk dari Kas Wakpro, potong saldo Wakpro otomatis
+      if (kuttabSource === 'Kas Wakpro') {
+        const { data: wakproAcc } = await supabase.from('accounts').select('*').eq('name', 'Kas Wakpro').limit(1);
+        if (wakproAcc && wakproAcc.length > 0) {
+          const wId = wakproAcc[0].id;
+          const wBal = Number(wakproAcc[0].balance);
+          if (numericAmount > wBal) {
+            setErrorMsg(`Gagal: Saldo Kas Wakpro tidak mencukupi (Sisa: Rp ${wBal.toLocaleString('id-ID')})!`);
+            setLoading(false);
+            return;
+          }
+          await supabase.from('accounts').update({ balance: wBal - numericAmount }).eq('id', wId);
+          await supabase.from('transactions').insert([{
+            type: 'Pengeluaran', unit: 'Wakpro', program: 'Alokasi ke Kas Kuttab',
+            description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount
+          }]);
+        }
+      }
+    } else {
+      finalProgram = masjidSource;
+    }
+
+    // Simpan Kas Masuk
+    const { error } = await supabase.from('transactions').insert([{
+      type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount
+    }]);
+
+    if (error) {
+      setErrorMsg('Gagal menyimpan: ' + error.message);
+      setLoading(false);
+      return;
+    }
+
+    // Tambah Saldo Akun Tujuan
+    await supabase.from('accounts').update({ balance: balance + numericAmount }).eq('name', currentAccountName);
+
+    setLoading(false);
+    setAmount('');
+    setDescription('');
+    setDonor('');
+    setSuccessMsg(`Alhamdulillah, Kas Masuk ${displayTitle} berhasil dicatat!`);
+  };
+
+  const handleKasKeluar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+
+    const numericAmount = Number(amount);
+    if (numericAmount <= 0) {
+      setErrorMsg('Nominal harus lebih besar dari 0.');
+      setLoading(false);
+      return;
+    }
+
+    if (numericAmount > balance) {
+      setErrorMsg(`Gagal: Saldo ${displayTitle} tidak mencukupi!`);
+      setLoading(false);
+      return;
+    }
+
+    const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
+    let finalProgram = masjidCategory;
+    let finalDesc = description;
+
+    if (slug === 'kuttab') {
+      finalProgram = `Kategori: ${kuttabCategory}`;
+    } else if (slug === 'wakpro') {
+      finalProgram = wakproCategory;
+      finalDesc = `Penerima: ${receiver} - ${description}`;
+    }
+
+    // Simpan Transaksi Keluar
+    const { error } = await supabase.from('transactions').insert([{
+      type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount
+    }]);
+
+    if (error) {
+      setErrorMsg('Gagal menyimpan: ' + error.message);
+      setLoading(false);
+      return;
+    }
+
+    // Kurangi Saldo Unit Ini
+    await supabase.from('accounts').update({ balance: balance - numericAmount }).eq('name', currentAccountName);
+
+    // KHUSUS WAKPRO KELUAR KE KAS KUTTAB
+    if (slug === 'wakpro' && wakproCategory === 'Kas Kuttab') {
+      const { data: kuttabAcc } = await supabase.from('accounts').select('*').eq('name', 'Kas Kuttab').limit(1);
+      if (kuttabAcc && kuttabAcc.length > 0) {
+        const kId = kuttabAcc[0].id;
+        const kBal = Number(kuttabAcc[0].balance);
+        await supabase.from('accounts').update({ balance: kBal + numericAmount }).eq('id', kId);
+        await supabase.from('transactions').insert([{
+          type: 'Pemasukan', unit: 'Kuttab', program: 'Kas Wakpro',
+          description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount
+        }]);
+      }
+    }
+
+    setLoading(false);
+    setAmount('');
+    setDescription('');
+    setReceiver('');
+    setSuccessMsg(`Kas Keluar ${displayTitle} berhasil dicatat dan saldo terpotong otomatis!`);
+  };
+
+  // Hitung Saldo Berjalan (Running Balance) untuk Laporan
+  let runningBal = 0;
+  const processedTransactions = transactions.map((t) => {
+    const amt = Number(t.amount);
+    if (t.type === 'Pemasukan') runningBal += amt;
+    else runningBal -= amt;
+    return { ...t, currentBalance: runningBal };
+  });
+
+  const formatRupiah = (angka: number) => {
+    return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(angka);
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      <aside className="w-64 bg-emerald-700 text-white flex flex-col hidden md:flex">
+        <div className="p-6 text-2xl font-bold border-b border-emerald-600">AMANAH</div>
+        <nav className="flex-1 p-4 space-y-2 text-sm">
+          <Link href="/" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">← Kembali ke Dashboard</Link>
+        </nav>
+      </aside>
+
+      <main className="flex-1 p-6 md:p-10 overflow-y-auto w-full">
+        <header className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">Manajemen {displayTitle}</h1>
+            <p className="text-gray-500 mt-1">Pencatatan dan laporan keuangan terisolasi khusus unit ini.</p>
+          </div>
+          <div className="mt-4 md:mt-0 bg-white px-6 py-3 rounded-xl shadow-sm border border-gray-200">
+            <span className="text-xs text-gray-500 block font-medium">Sisa Saldo Saat Ini:</span>
+            <span className="text-xl font-extrabold text-emerald-700">Rp {formatRupiah(balance)}</span>
+          </div>
+        </header>
+
+        {/* Tab Navigasi */}
+        <div className="flex space-x-2 border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setActiveTab('masuk')}
+            className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'masuk' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            📥 Pencatatan Kas Masuk
+          </button>
+          <button
+            onClick={() => setActiveTab('keluar')}
+            className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'keluar' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            📤 Pencatatan Kas Keluar
+          </button>
+          <button
+            onClick={() => setActiveTab('laporan')}
+            className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'laporan' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            📊 Laporan Riwayat & Log
+          </button>
+        </div>
+
+        {successMsg && <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-sm font-medium">{successMsg}</div>}
+        {errorMsg && <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-lg text-sm font-medium">{errorMsg}</div>}
+
+        {/* KONTEN TAB KAS MASUK */}
+        {activeTab === 'masuk' && (
+          <div className="max-w-xl bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Masuk {displayTitle}</h3>
+            <form onSubmit={handleKasMasuk} className="space-y-5">
+              
+              {/* Pilihan Sumber Khusus Wakpro */}
+              {slug === 'wakpro' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Sumber Dana Wakpro</label>
+                    <select value={wakproSource} onChange={(e) => setWakproSource(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-sm">
+                      {wakproSources.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  {wakproSource === 'Wakpro Lainnya' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Nama Wakpro Lainnya</label>
+                      <input type="text" required value={customWakpro} onChange={(e) => setCustomWakpro(e.target.value)} placeholder="Contoh: Wakpro Toko" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Donatur / Qiyadah / Muhsinin</label>
+                    <input type="text" required value={donor} onChange={(e) => setDonor(e.target.value)} placeholder="Contoh: Hamba Allah" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+                  </div>
+                </>
+              )}
+
+              {/* Pilihan Sumber Khusus Kuttab */}
+              {slug === 'kuttab' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Sumber Dana Kas Kuttab</label>
+                    <select value={kuttabSource} onChange={(e) => setKuttabSource(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-sm">
+                      <option value="Kas Wakpro">Kas Wakpro (Mengurangi Saldo Kas Wakpro)</option>
+                      <option value="Lainnya">Lainnya (Tulis Sendiri)</option>
+                    </select>
+                  </div>
+                  {kuttabSource === 'Lainnya' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan Sumber Lainnya</label>
+                      <input type="text" required value={customKuttabSource} onChange={(e) => setCustomKuttabSource(e.target.value)} placeholder="Contoh: Infak Umum" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Pilihan Sumber Khusus Masjid */}
+              {slug === 'masjid' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Program / Sumber Masuk</label>
+                  <select value={masjidSource} onChange={(e) => setMasjidSource(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-sm">
+                    <option value="Infaq Umum">Infaq Umum</option>
+                    <option value="Jumat Berkah">Jumat Berkah</option>
+                    <option value="Wakaf Tunai">Wakaf Tunai</option>
+                    <option value="Lainnya">Lainnya</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Catatan Transaksi</label>
+                <textarea rows={2} required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Tuliskan keterangan detail..." className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Nominal (Rp)</label>
+                <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Contoh: 1000000" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+              </div>
+
+              <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-700 text-white font-medium rounded-lg hover:bg-emerald-800 transition-colors cursor-pointer text-sm">
+                {loading ? 'Menyimpan...' : 'Simpan Kas Masuk'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* KONTEN TAB KAS KELUAR */}
+        {activeTab === 'keluar' && (
+          <div className="max-w-xl bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Keluar {displayTitle}</h3>
+            <form onSubmit={handleKasKeluar} className="space-y-5">
+              
+              {/* Kategori Keluar Wakpro */}
+              {slug === 'wakpro' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Kategori Pengeluaran Wakpro</label>
+                  <select value={wakproCategory} onChange={(e) => setWakproCategory(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-sm">
+                    {wakproCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  {wakproCategory === 'Kas Kuttab' && <p className="text-xs text-blue-600 mt-1">💡 Otomatis menambah saldo Kas Kuttab.</p>}
+                </div>
+              )}
+
+              {/* Kategori Keluar Kuttab */}
+              {slug === 'kuttab' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Kategori Pengeluaran Kuttab</label>
+                  <select value={kuttabCategory} onChange={(e) => setKuttabCategory(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-sm">
+                    {kuttabExpenseCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* Kategori Keluar Masjid */}
+              {slug === 'masjid' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Kategori Pengeluaran Masjid</label>
+                  <select value={masjidCategory} onChange={(e) => setMasjidCategory(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-sm">
+                    <option value="Operasional Masjid">Operasional Masjid</option>
+                    <option value="Listrik & Air">Listrik & Air</option>
+                    <option value="Perawatan / Kebersihan">Perawatan / Kebersihan</option>
+                    <option value="Santunan / Sosial">Santunan / Sosial</option>
+                  </select>
+                </div>
+              )}
+
+              {slug === 'wakpro' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Penerima</label>
+                  <input type="text" required value={receiver} onChange={(e) => setReceiver(e.target.value)} placeholder="Nama penerima dana..." className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+                </div>
+              ) : null}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Catatan</label>
+                <textarea rows={2} required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Rincian pengeluaran..." className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Nominal (Rp)</label>
+                <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Contoh: 150000" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
+              </div>
+
+              <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors cursor-pointer text-sm">
+                {loading ? 'Menyimpan...' : 'Simpan Kas Keluar'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* KONTEN TAB LAPORAN */}
+        {activeTab === 'laporan' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">Log Riwayat Transaksi {displayTitle}</h3>
+              <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 cursor-pointer">
+                Cetak / Unduh PDF
+              </button>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-semibold">
+                    <th className="p-3.5 border-r border-gray-200">Hari / Tanggal</th>
+                    <th className="p-3.5 border-r border-gray-200">Uraian / Keterangan</th>
+                    <th className="p-3.5 border-r border-gray-200 text-right">Kredit (Masuk)</th>
+                    <th className="p-3.5 border-r border-gray-200 text-right">Debet (Keluar)</th>
+                    <th className="p-3.5 border-r border-gray-200 text-right">Saldo</th>
+                    <th className="p-3.5">Kategori / Program</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Memuat data...</td></tr>
+                  ) : processedTransactions.length > 0 ? (
+                    processedTransactions.map((trx) => {
+                      const dateFormatted = new Date(trx.created_at).toLocaleDateString('id-ID', {
+                        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                      });
+                      return (
+                        <tr key={trx.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="p-3.5 border-r border-gray-200 text-gray-600 whitespace-nowrap">{dateFormatted}</td>
+                          <td className="p-3.5 border-r border-gray-200 text-gray-800 font-medium">{trx.description}</td>
+                          <td className="p-3.5 border-r border-gray-200 text-right text-emerald-600 font-medium">
+                            {trx.type === 'Pemasukan' ? formatRupiah(trx.amount) : ''}
+                          </td>
+                          <td className="p-3.5 border-r border-gray-200 text-right text-red-600 font-medium">
+                            {trx.type === 'Pengeluaran' ? formatRupiah(trx.amount) : ''}
+                          </td>
+                          <td className="p-3.5 border-r border-gray-200 text-right font-bold text-gray-800">
+                            {formatRupiah(trx.currentBalance)}
+                          </td>
+                          <td className="p-3.5 text-gray-700">
+                            <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-semibold">
+                              {trx.program || '-'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Belum ada catatan transaksi pada unit ini.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
