@@ -2,11 +2,24 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 
 export default function LaporanKeuangan() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  // Cek apakah sudah login
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      }
+    }
+    checkSession();
+  }, [router]);
 
   useEffect(() => {
     async function fetchData() {
@@ -40,6 +53,11 @@ export default function LaporanKeuangan() {
     }).format(angka);
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar Navigasi */}
@@ -51,8 +69,15 @@ export default function LaporanKeuangan() {
           <Link href="/kas-keluar" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Keluar</Link>
           <Link href="/laporan" className="block p-3 bg-emerald-800 rounded-lg font-medium transition-colors">Laporan</Link>
         </nav>
-        <div className="p-4 border-t border-emerald-600 text-xs text-emerald-200">
-          Login sebagai: Bendahara
+        
+        {/* Tombol Logout */}
+        <div className="p-4 border-t border-emerald-600">
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 px-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer text-center"
+          >
+            Keluar (Logout)
+          </button>
         </div>
       </aside>
 

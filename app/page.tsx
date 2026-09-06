@@ -1,44 +1,91 @@
-import React from 'react';
+"use client";
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
-export const dynamic = 'force-dynamic';
+export default function Dashboard() {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [totalSaldo, setTotalSaldo] = useState(0);
+  const [pemasukanBulanIni, setPemasukanBulanIni] = useState(0);
+  const [pengeluaranBulanIni, setPengeluaranBulanIni] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
-export default async function Dashboard() {
-  // 1. Mengambil total saldo
-  const { data: accounts } = await supabase.from('accounts').select('balance');
-  let totalSaldo = 0;
-  if (accounts) {
-    totalSaldo = accounts.reduce((jumlah, kas) => jumlah + Number(kas.balance), 0);
-  }
-  const saldoRupiah = new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0
-  }).format(totalSaldo);
+  // Cek apakah sudah login atau belum
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      }
+    }
+    checkSession();
+  }, [router]);
 
-  // 2. Mengambil 5 transaksi terbaru
-  const { data: transactions } = await supabase
-    .from('transactions')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(5);
+  useEffect(() => {
+    async function fetchData() {
+      // Ambil transaksi terbaru
+      const { data: trxData } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (trxData) setTransactions(trxData);
+
+      // Ambil saldo dari tabel accounts
+      const { data: accData } = await supabase
+        .from('accounts')
+        .select('*');
+
+      if (accData && accData.length > 0) {
+        let total = 0;
+        accData.forEach((acc) => {
+          total += Number(acc.balance);
+        });
+        setTotalSaldo(total);
+      }
+
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
+
+  const formatRupiah = (angka: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0
+    }).format(angka);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar Navigasi */}
       <aside className="w-64 bg-emerald-700 text-white flex flex-col hidden md:flex">
-        <div className="p-6 text-2xl font-bold border-b border-emerald-600">
-          AMANAH
-        </div>
+        <div className="p-6 text-2xl font-bold border-b border-emerald-600">AMANAH</div>
         <nav className="flex-1 p-4 space-y-2 text-sm">
-          <Link href="/" className="block p-3 bg-emerald-800 rounded-lg font-medium">Dashboard</Link>
+          <Link href="/" className="block p-3 bg-emerald-800 rounded-lg font-medium transition-colors">Dashboard</Link>
           <Link href="/kas-masuk" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Masuk</Link>
           <Link href="/kas-keluar" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Keluar</Link>
           <Link href="/laporan" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Laporan</Link>
         </nav>
-        <div className="p-4 border-t border-emerald-600 text-xs text-emerald-200">
-          Login sebagai: Bendahara
+        
+        {/* Tombol Logout */}
+        <div className="p-4 border-t border-emerald-600">
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 px-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer text-center"
+          >
+            Keluar (Logout)
+          </button>
         </div>
       </aside>
 
@@ -49,19 +96,23 @@ export default async function Dashboard() {
           <p className="text-gray-500 mt-1">Ringkasan Keuangan Masjid & Kuttab Al-Fatih</p>
         </header>
 
-        {/* Kartu Ringkasan Saldo */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
+        {/* Kartu Ringkasan */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="text-gray-500 text-sm font-medium">Total Saldo Saat Ini</h3>
-            <p className="text-3xl font-bold text-gray-800 mt-2">{saldoRupiah}</p>
+            <p className="text-gray-500 text-sm font-medium">Total Saldo Saat Ini</p>
+            <h3 className="text-2xl font-bold text-gray-800 mt-1">
+              {loading ? 'Memuat...' : formatRupiah(totalSaldo)}
+            </h3>
           </div>
+
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="text-gray-500 text-sm font-medium">Pemasukan Bulan Ini</h3>
-            <p className="text-3xl font-bold text-emerald-600 mt-2">Live Sistem</p>
+            <p className="text-gray-500 text-sm font-medium">Pemasukan</p>
+            <h3 className="text-2xl font-bold text-emerald-600 mt-1">Sistem Aktif</h3>
           </div>
+
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="text-gray-500 text-sm font-medium">Pengeluaran Bulan Ini</h3>
-            <p className="text-3xl font-bold text-red-600 mt-2">Live Sistem</p>
+            <p className="text-gray-500 text-sm font-medium">Pengeluaran</p>
+            <h3 className="text-2xl font-bold text-red-600 mt-1">Sistem Aktif</h3>
           </div>
         </div>
 
@@ -69,9 +120,7 @@ export default async function Dashboard() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
             <h3 className="font-bold text-gray-800">Transaksi Terbaru</h3>
-            <Link href="/laporan" className="text-xs font-medium text-emerald-600 hover:underline">
-              Lihat Semua Laporan &rarr;
-            </Link>
+            <Link href="/laporan" className="text-sm text-emerald-600 hover:underline">Lihat Semua Laporan →</Link>
           </div>
           
           <div className="overflow-x-auto">
@@ -85,7 +134,11 @@ export default async function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {transactions && transactions.length > 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="p-6 text-center text-gray-500">Memuat data...</td>
+                  </tr>
+                ) : transactions.length > 0 ? (
                   transactions.map((trx) => (
                     <tr key={trx.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="p-4 text-sm text-gray-600">
@@ -98,15 +151,13 @@ export default async function Dashboard() {
                         </span>
                       </td>
                       <td className={`p-4 text-sm font-bold text-right ${trx.type === 'Pemasukan' ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {trx.type === 'Pemasukan' ? '+' : '-'} {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(trx.amount)}
+                        {trx.type === 'Pemasukan' ? '+' : '-'} {formatRupiah(trx.amount)}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="p-6 text-center text-gray-500 py-12">
-                      Belum ada transaksi di database.
-                    </td>
+                    <td colSpan={4} className="p-6 text-center text-gray-500">Belum ada transaksi.</td>
                   </tr>
                 )}
               </tbody>

@@ -1,81 +1,91 @@
-"use client"; 
+"use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { supabase } from '../../lib/supabase'; 
+import { useRouter } from 'next/navigation';
+import { supabase } from '../../lib/supabase';
 
 export default function KasKeluar() {
-  const [keterangan, setKeterangan] = useState('');
-  const [jumlah, setJumlah] = useState('');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const router = useRouter();
 
-  const simpanKasKeluar = async (e: React.FormEvent) => {
+  // Cek apakah sudah login
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      }
+    }
+    checkSession();
+  }, [router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setSuccessMsg('');
+    setErrorMsg('');
 
-    try {
-      const { data: kasLama, error: errorCari } = await supabase
-        .from('accounts')
-        .select('balance, id')
-        .eq('name', 'Kas Utama Masjid')
-        .single();
+    const numericAmount = Number(amount);
 
-      if (errorCari) {
-        alert("Gagal mencari akun kas: " + errorCari.message);
-        setLoading(false);
-        return;
-      }
+    // 1. Cek saldo saat ini terlebih dahulu
+    const { data: accData, error: accError } = await supabase
+      .from('accounts')
+      .select('*')
+      .limit(1);
 
-      const jumlahKeluar = Number(jumlah);
-
-      if (Number(kasLama.balance) < jumlahKeluar) {
-        alert("Maaf, saldo kas masjid tidak mencukupi untuk pengeluaran ini!");
-        setLoading(false);
-        return;
-      }
-
-      const saldoBaru = Number(kasLama.balance) - jumlahKeluar;
-
-      const { error: errorUpdate } = await supabase
-        .from('accounts')
-        .update({ balance: saldoBaru })
-        .eq('id', kasLama.id);
-
-      if (errorUpdate) {
-        alert("Gagal memperbarui saldo: " + errorUpdate.message);
-        setLoading(false);
-        return;
-      }
-
-      const { error: errorRiwayat } = await supabase
-        .from('transactions')
-        .insert([
-          {
-            description: keterangan,
-            amount: jumlahKeluar,
-            type: 'Pengeluaran'
-          }
-        ]);
-
-      if (errorRiwayat) {
-        alert("Gagal menyimpan riwayat: " + errorRiwayat.message);
-        setLoading(false);
-        return;
-      }
-
-      alert(`Pengeluaran "${keterangan}" sebesar Rp ${jumlah} berhasil dicatat.`);
-      setKeterangan('');
-      setJumlah('');
-
-    } catch (error: any) {
-      alert("Terjadi kesalahan sistem: " + (error.message || error));
-    } finally {
+    if (accError || !accData || accData.length === 0) {
+      setErrorMsg('Gagal memeriksa data saldo akun.');
       setLoading(false);
+      return;
     }
+
+    const currentId = accData[0].id;
+    const currentBalance = Number(accData[0].balance);
+
+    // Validasi: Apakah saldo cukup?
+    if (numericAmount > currentBalance) {
+      setErrorMsg('Gagal: Saldo kas tidak mencukupi untuk pengeluaran ini!');
+      setLoading(false);
+      return;
+    }
+
+    // 2. Masukkan ke tabel transactions
+    const { error: trxError } = await supabase
+      .from('transactions')
+      .insert([{ type: 'Pengeluaran', description, amount: numericAmount }]);
+
+    if (trxError) {
+      setErrorMsg('Gagal menyimpan transaksi: ' + trxError.message);
+      setLoading(false);
+      return;
+    }
+
+    // 3. Kurangi saldo di tabel accounts
+    const newBalance = currentBalance - numericAmount;
+    await supabase
+      .from('accounts')
+      .update({ balance: newBalance })
+      .eq('id', currentId);
+
+    setLoading(false);
+    setDescription('');
+    setAmount('');
+    setSuccessMsg('Kas Keluar berhasil dicatat dan saldo terpotong otomatis!');
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
   };
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Sidebar Navigasi */}
       <aside className="w-64 bg-emerald-700 text-white flex flex-col hidden md:flex">
         <div className="p-6 text-2xl font-bold border-b border-emerald-600">AMANAH</div>
         <nav className="flex-1 p-4 space-y-2 text-sm">
@@ -84,49 +94,70 @@ export default function KasKeluar() {
           <Link href="/kas-keluar" className="block p-3 bg-emerald-800 rounded-lg font-medium transition-colors">Kas Keluar</Link>
           <Link href="/laporan" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Laporan</Link>
         </nav>
+        
+        {/* Tombol Logout */}
+        <div className="p-4 border-t border-emerald-600">
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 px-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer text-center"
+          >
+            Keluar (Logout)
+          </button>
+        </div>
       </aside>
 
+      {/* Konten Utama */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Catat Kas Keluar</h1>
-          <p className="text-gray-500 mt-1">Masukkan data pengeluaran/operasional masjid</p>
+          <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Keluar</h1>
+          <p className="text-gray-500 mt-1">Catat penggunaan dana untuk operasional masjid atau kuttab</p>
         </header>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 max-w-2xl">
-          <form onSubmit={simpanKasKeluar}>
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan (Keperluan)</label>
-              <input 
-                type="text" required
-                placeholder="Contoh: Pembayaran Listrik & Air"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 outline-none text-gray-800"
-                value={keterangan}
-                onChange={(e) => setKeterangan(e.target.value)}
+        <div className="max-w-xl bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+          {successMsg && (
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-sm font-medium">
+              {successMsg}
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-lg text-sm font-medium">
+              {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan Pengeluaran</label>
+              <input
+                type="text"
+                required
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Contoh: Pembayaran Listrik / Belanja Kebersihan"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
               />
             </div>
 
-            <div className="mb-8">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah (Rp)</label>
-              <input 
-                type="number" required min="1"
-                placeholder="Contoh: 200000"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 outline-none text-gray-800"
-                value={jumlah}
-                onChange={(e) => setJumlah(e.target.value)}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Nominal (Rp)</label>
+              <input
+                type="number"
+                required
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Contoh: 150000"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
               />
             </div>
 
-            <div className="flex gap-4">
-              <button 
-                type="submit" disabled={loading}
-                className="px-6 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors disabled:bg-gray-400"
-              >
-                {loading ? 'Menyimpan...' : 'Simpan Pengeluaran'}
-              </button>
-              <Link href="/" className="px-6 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200">
-                Kembali ke Dashboard
-              </Link>
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors cursor-pointer disabled:bg-red-300 text-sm"
+            >
+              {loading ? 'Menyimpan...' : 'Simpan Kas Keluar'}
+            </button>
           </form>
         </div>
       </main>
