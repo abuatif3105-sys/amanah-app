@@ -8,8 +8,29 @@ import { supabase } from '../../lib/supabase';
 export default function LaporanKeuangan() {
   const [userEmail, setUserEmail] = useState('');
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  const kuttabCategories = [
+    'KBM',
+    'KBO',
+    'TU',
+    'ATK',
+    'RAKER',
+    'PERSIAPAN KELAS',
+    'MOKA',
+    'SARANA PRASARANA',
+    'PEMBUKAAN TEMA',
+    'MABIT GURU',
+    'RAPAT',
+    'DAUROH',
+    'PRAMABIT',
+    'KEMAH',
+    'MABIT SANTRI',
+    'Kas Wakpro',
+    'Lainnya'
+  ];
 
   useEffect(() => {
     async function checkSession() {
@@ -25,7 +46,6 @@ export default function LaporanKeuangan() {
 
   useEffect(() => {
     async function fetchData() {
-      // Ambil transaksi khusus unit 'Kuttab' diurutkan dari yang terlama ke terbaru agar saldo berjalan akurat
       const { data } = await supabase
         .from('transactions')
         .select('*')
@@ -38,24 +58,42 @@ export default function LaporanKeuangan() {
     fetchData();
   }, []);
 
+  // Filter transaksi berdasarkan kategori yang dipilih
+  const filteredTransactions = transactions.filter((trx) => {
+    if (selectedCategory === 'Semua') return true;
+    return trx.program === selectedCategory;
+  });
+
   let totalKredit = 0;
   let totalDebet = 0;
   let runningBalance = 0;
 
-  // Petakan transaksi dengan menghitung saldo berjalan (running balance)
   const processedTransactions = transactions.map((trx) => {
     const amount = Number(trx.amount);
     if (trx.type === 'Pemasukan') {
-      totalKredit += amount;
       runningBalance += amount;
     } else {
-      totalDebet += amount;
       runningBalance -= amount;
     }
     return {
       ...trx,
       currentBalance: runningBalance
     };
+  });
+
+  // Filter setelah saldo berjalan dihitung agar urutan saldo tetap akurat
+  const displayedTransactions = processedTransactions.filter((trx) => {
+    if (selectedCategory === 'Semua') return true;
+    return trx.program === selectedCategory;
+  });
+
+  // Hitung total kredit dan debet dari data yang sedang difilter
+  displayedTransactions.forEach((trx) => {
+    if (trx.type === 'Pemasukan') {
+      totalKredit += Number(trx.amount);
+    } else {
+      totalDebet += Number(trx.amount);
+    }
   });
 
   const formatRupiah = (angka: number) => {
@@ -68,8 +106,6 @@ export default function LaporanKeuangan() {
     await supabase.auth.signOut();
     router.push('/login');
   };
-
-  const isKuttabOnly = userEmail === 'tu@kafmedan.com' || userEmail.includes('kuttab');
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -94,9 +130,22 @@ export default function LaporanKeuangan() {
         <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Laporan Keuangan Kas Kuttab</h1>
-            <p className="text-gray-500 mt-1">Log riwayat transaksi, kredit (pemasukan), debet (pengeluaran), dan saldo berjalan</p>
+            <p className="text-gray-500 mt-1">Log riwayat transaksi dan filter berdasarkan kategori pengeluaran</p>
           </div>
-          <div className="mt-4 md:mt-0">
+          
+          <div className="mt-4 md:mt-0 flex items-center space-x-3">
+            {/* Filter Dropdown Kategori */}
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Semua">Semua Kategori</option>
+              {kuttabCategories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+
             <button 
               onClick={() => window.print()} 
               className="px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
@@ -106,31 +155,28 @@ export default function LaporanKeuangan() {
           </div>
         </header>
 
-        {/* Kartu Ringkasan Total */}
+        {/* Ringkasan Filter */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 text-sm font-medium">Total Kredit (Masuk)</p>
+            <p className="text-gray-500 text-sm font-medium">Total Kredit ({selectedCategory})</p>
             <h3 className="text-2xl font-bold text-emerald-600 mt-1">Rp {formatRupiah(totalKredit)}</h3>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 text-sm font-medium">Total Debet (Keluar)</p>
+            <p className="text-gray-500 text-sm font-medium">Total Debet ({selectedCategory})</p>
             <h3 className="text-2xl font-bold text-red-600 mt-1">Rp {formatRupiah(totalDebet)}</h3>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 text-sm font-medium">Saldo Akhir</p>
-            <h3 className={`text-2xl font-bold mt-1 ${runningBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-              Rp {formatRupiah(runningBalance)}
-            </h3>
+            <p className="text-gray-500 text-sm font-medium">Jumlah Catatan</p>
+            <h3 className="text-2xl font-bold text-gray-800 mt-1">{displayedTransactions.length} Transaksi</h3>
           </div>
         </div>
 
-        {/* Tabel Log Transaksi Mirip Format Excel Anda */}
+        {/* Tabel Log Transaksi */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Tabel Log Transaksi Kas Kuttab</h3>
-            <span className="text-xs text-gray-400">Total: {processedTransactions.length} catatan</span>
+            <h3 className="font-bold text-gray-800">Tabel Log Transaksi (Filter: {selectedCategory})</h3>
           </div>
           
           <div className="overflow-x-auto">
@@ -150,8 +196,8 @@ export default function LaporanKeuangan() {
                   <tr>
                     <td colSpan={6} className="p-6 text-center text-gray-500 py-12">Memuat data laporan...</td>
                   </tr>
-                ) : processedTransactions.length > 0 ? (
-                  processedTransactions.map((trx) => {
+                ) : displayedTransactions.length > 0 ? (
+                  displayedTransactions.map((trx) => {
                     const dateFormatted = new Date(trx.created_at).toLocaleDateString('id-ID', {
                       weekday: 'long',
                       day: 'numeric',
@@ -169,7 +215,7 @@ export default function LaporanKeuangan() {
                         <td className="p-3.5 border-r border-gray-200 text-right text-red-600 font-medium">
                           {trx.type === 'Pengeluaran' ? formatRupiah(trx.amount) : ''}
                         </td>
-                        <td className={`p-3.5 border-r border-gray-200 text-right font-bold ${trx.currentBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                        <td className="p-3.5 border-r border-gray-200 text-right font-bold text-gray-800">
                           {formatRupiah(trx.currentBalance)}
                         </td>
                         <td className="p-3.5 text-gray-700">
@@ -182,7 +228,7 @@ export default function LaporanKeuangan() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">Belum ada catatan transaksi bulan ini.</td>
+                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">Tidak ada transaksi untuk kategori ini.</td>
                   </tr>
                 )}
               </tbody>
