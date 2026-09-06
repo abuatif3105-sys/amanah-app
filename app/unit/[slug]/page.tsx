@@ -17,34 +17,25 @@ export default function UnitManagement() {
   const [errorMsg, setErrorMsg] = useState('');
   const [transactions, setTransactions] = useState<any[]>([]);
 
-  // Tanggal default hari ini (Format YYYY-MM-DD)
   const todayDate = new Date().toISOString().split('T')[0];
   const [customDate, setCustomDate] = useState(todayDate);
 
-  // State Form Kas Masuk Wakpro
   const [wakproSource, setWakproSource] = useState('Wakpro BETA');
   const [customWakpro, setCustomWakpro] = useState('');
   const [donor, setDonor] = useState('');
   
-  // State Form Kas Masuk Kuttab
   const [kuttabSource, setKuttabSource] = useState('Kas Wakpro');
   const [customKuttabSource, setCustomKuttabSource] = useState('');
 
-  // State Form Kas Masuk Masjid
   const [masjidSource, setMasjidSource] = useState('Infaq Umum');
 
-  // State Umum Kas Masuk & Keluar
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
 
-  // State Kas Keluar Wakpro
   const [wakproCategory, setWakproCategory] = useState('Kas Kuttab');
   const [receiver, setReceiver] = useState('');
 
-  // State Kas Keluar Kuttab
   const [kuttabCategory, setKuttabCategory] = useState('KBM');
-
-  // State Kas Keluar Masjid
   const [masjidCategory, setMasjidCategory] = useState('Operasional Masjid');
 
   const unitNameMap: { [key: string]: string } = {
@@ -71,36 +62,37 @@ export default function UnitManagement() {
     'Kas Kuttab', 'Operasional', 'Sarana dan Prasarana', "Ta'awun", 'Hadiah', 'Kafalah'
   ];
 
-  useEffect(() => {
-    async function loadData() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
-
-      const { data: accData } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('name', currentAccountName)
-        .limit(1);
-
-      if (accData && accData.length > 0) {
-        setBalance(Number(accData[0].balance));
-      }
-
-      const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
-      const { data: trxData } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('unit', unitLabel)
-        .order('created_at', { ascending: true });
-
-      if (trxData) setTransactions(trxData);
-      setLoading(false);
+  const loadData = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/login');
+      return;
     }
+
+    const { data: accData } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('name', currentAccountName)
+      .limit(1);
+
+    if (accData && accData.length > 0) {
+      setBalance(Number(accData[0].balance));
+    }
+
+    const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
+    const { data: trxData } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('unit', unitLabel)
+      .order('created_at', { ascending: true });
+
+    if (trxData) setTransactions(trxData);
+    setLoading(false);
+  };
+
+  useEffect(() => {
     loadData();
-  }, [slug, router, successMsg]);
+  }, [slug, router]);
 
   const handleKasMasuk = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,8 +110,6 @@ export default function UnitManagement() {
     const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
     let finalProgram = 'Infaq Umum';
     let finalDesc = description;
-
-    // Gabungkan tanggal pilihan dengan jam saat ini agar urutan waktu presisi
     const transactionTimestamp = `${customDate}T12:00:00`;
 
     if (slug === 'wakpro') {
@@ -138,7 +128,8 @@ export default function UnitManagement() {
             setLoading(false);
             return;
           }
-          await supabase.from('accounts').update({ balance: wBal - numericAmount }).eq('id', wId);
+          const newWakproBal = wBal - numericAmount;
+          await supabase.from('accounts').update({ balance: newWakproBal }).eq('id', wId);
           await supabase.from('transactions').insert([{
             type: 'Pengeluaran', unit: 'Wakpro', program: 'Alokasi ke Kas Kuttab',
             description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: transactionTimestamp
@@ -149,7 +140,7 @@ export default function UnitManagement() {
       finalProgram = masjidSource;
     }
 
-    // Simpan Kas Masuk dengan tanggal kustom
+    // Simpan Kas Masuk
     const { error } = await supabase.from('transactions').insert([{
       type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: transactionTimestamp
     }]);
@@ -160,13 +151,17 @@ export default function UnitManagement() {
       return;
     }
 
-    await supabase.from('accounts').update({ balance: balance + numericAmount }).eq('name', currentAccountName);
+    // UPDATE OTOMATIS SALDO AKUN UTAMA
+    const newBalance = balance + numericAmount;
+    await supabase.from('accounts').update({ balance: newBalance }).eq('name', currentAccountName);
+    setBalance(newBalance);
 
     setLoading(false);
     setAmount('');
     setDescription('');
     setDonor('');
     setSuccessMsg(`Alhamdulillah, Kas Masuk ${displayTitle} berhasil dicatat!`);
+    loadData();
   };
 
   const handleKasKeluar = async (e: React.FormEvent) => {
@@ -200,7 +195,7 @@ export default function UnitManagement() {
       finalDesc = `Penerima: ${receiver} - ${description}`;
     }
 
-    // Simpan Transaksi Keluar dengan tanggal kustom
+    // Simpan Transaksi Keluar
     const { error } = await supabase.from('transactions').insert([{
       type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: transactionTimestamp
     }]);
@@ -211,14 +206,18 @@ export default function UnitManagement() {
       return;
     }
 
-    await supabase.from('accounts').update({ balance: balance - numericAmount }).eq('name', currentAccountName);
+    // UPDATE OTOMATIS SALDO AKUN UTAMA
+    const newBalance = balance - numericAmount;
+    await supabase.from('accounts').update({ balance: newBalance }).eq('name', currentAccountName);
+    setBalance(newBalance);
 
     if (slug === 'wakpro' && wakproCategory === 'Kas Kuttab') {
       const { data: kuttabAcc } = await supabase.from('accounts').select('*').eq('name', 'Kas Kuttab').limit(1);
       if (kuttabAcc && kuttabAcc.length > 0) {
         const kId = kuttabAcc[0].id;
         const kBal = Number(kuttabAcc[0].balance);
-        await supabase.from('accounts').update({ balance: kBal + numericAmount }).eq('id', kId);
+        const newKuttabBal = kBal + numericAmount;
+        await supabase.from('accounts').update({ balance: newKuttabBal }).eq('id', kId);
         await supabase.from('transactions').insert([{
           type: 'Pemasukan', unit: 'Kuttab', program: 'Kas Wakpro',
           description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount, created_at: transactionTimestamp
@@ -231,6 +230,7 @@ export default function UnitManagement() {
     setDescription('');
     setReceiver('');
     setSuccessMsg(`Kas Keluar ${displayTitle} berhasil dicatat dan saldo terpotong otomatis!`);
+    loadData();
   };
 
   let runningBal = 0;
@@ -287,7 +287,6 @@ export default function UnitManagement() {
             <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Masuk {displayTitle}</h3>
             <form onSubmit={handleKasMasuk} className="space-y-5">
               
-              {/* Pilihan Tanggal Transaksi */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Transaksi</label>
                 <input type="date" required value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm bg-white" />
@@ -367,7 +366,6 @@ export default function UnitManagement() {
             <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Keluar {displayTitle}</h3>
             <form onSubmit={handleKasKeluar} className="space-y-5">
               
-              {/* Pilihan Tanggal Transaksi */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Transaksi</label>
                 <input type="date" required value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm bg-white" />
