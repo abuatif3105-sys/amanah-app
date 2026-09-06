@@ -42,7 +42,6 @@ export default function UnitManagement() {
   const [wakproCategory, setWakproCategory] = useState('Kas Kuttab');
   const [receiver, setReceiver] = useState('');
 
-  // Kategori Pengeluaran Baru khusus Kuttab (Default: KONSUMSI)
   const [kuttabCategory, setKuttabCategory] = useState('KONSUMSI');
   const [masjidCategory, setMasjidCategory] = useState('Operasional Masjid');
 
@@ -55,7 +54,6 @@ export default function UnitManagement() {
   const currentAccountName = unitNameMap[slug] || 'Kas Kuttab';
   const displayTitle = slug === 'masjid' ? 'Kas Masjid' : slug === 'wakpro' ? 'Kas Wakaf Produktif (Wakpro)' : 'Kas Kuttab';
 
-  // Daftar Kategori Kas Keluar Kuttab Terbaru Sesuai Permintaan
   const kuttabExpenseCategories = [
     'KONSUMSI', 'LISTRIK', 'ATK', 'KEBERSIHAN', 'CETAK SPANDUK', 
     'CETAK KERTAS', 'PERLENGKAPAN', 'PERALATAN', 'PULSA', 
@@ -183,7 +181,7 @@ export default function UnitManagement() {
     const transactionTimestamp = `${customDate}T12:00:00`;
 
     if (slug === 'kuttab') {
-      finalProgram = kuttabCategory; // Kategori pengeluaran baru Kuttab
+      finalProgram = kuttabCategory;
     } else if (slug === 'wakpro') {
       finalProgram = wakproCategory;
       finalDesc = `Penerima: ${receiver} - ${description}`;
@@ -600,7 +598,7 @@ export default function UnitManagement() {
                 <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[700px]">
                   <thead>
                     <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-semibold">
-                      <th className="p-3 border-r border-gray-200">Hari / Tanggal</th>
+                      <th className="p-3 border-r border-gray-200">Tanggal</th>
                       <th className="p-3 border-r border-gray-200">Uraian / Keterangan</th>
                       <th className="p-3 border-r border-gray-200 text-right">Kredit (Masuk)</th>
                       <th className="p-3 border-r border-gray-200 text-right">Debet (Keluar)</th>
@@ -613,9 +611,13 @@ export default function UnitManagement() {
                       <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Memuat data...</td></tr>
                     ) : processedTransactions.length > 0 ? (
                       processedTransactions.map((trx) => {
-                        const dateFormatted = new Date(trx.created_at).toLocaleDateString('id-ID', {
-                          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-                        });
+                        // FORMAT TANGGAL DD/MM/YYYY
+                        const trxDate = new Date(trx.created_at);
+                        const day = String(trxDate.getDate()).padStart(2, '0');
+                        const month = String(trxDate.getMonth() + 1).padStart(2, '0');
+                        const year = trxDate.getFullYear();
+                        const dateFormatted = `${day}/${month}/${year}`;
+                        
                         return (
                           <tr key={trx.id} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="p-3 border-r border-gray-200 text-gray-600 whitespace-nowrap">{dateFormatted}</td>
