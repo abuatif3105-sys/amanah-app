@@ -19,7 +19,7 @@ export default function UnitManagement() {
   // State Filter Periode Tanggal
   const [filterMode, setFilterMode] = useState<'semua' | 'hari' | 'bulan' | 'tahun' | 'rentang'>('semua');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -42,7 +42,8 @@ export default function UnitManagement() {
   const [wakproCategory, setWakproCategory] = useState('Kas Kuttab');
   const [receiver, setReceiver] = useState('');
 
-  const [kuttabCategory, setKuttabCategory] = useState('KBM');
+  // Kategori Pengeluaran Baru khusus Kuttab (Default: KONSUMSI)
+  const [kuttabCategory, setKuttabCategory] = useState('KONSUMSI');
   const [masjidCategory, setMasjidCategory] = useState('Operasional Masjid');
 
   const unitNameMap: { [key: string]: string } = {
@@ -54,10 +55,11 @@ export default function UnitManagement() {
   const currentAccountName = unitNameMap[slug] || 'Kas Kuttab';
   const displayTitle = slug === 'masjid' ? 'Kas Masjid' : slug === 'wakpro' ? 'Kas Wakaf Produktif (Wakpro)' : 'Kas Kuttab';
 
+  // Daftar Kategori Kas Keluar Kuttab Terbaru Sesuai Permintaan
   const kuttabExpenseCategories = [
-    'KBM', 'KBO', 'TU', 'ATK', 'RAKER', 'PERSIAPAN KELAS', 'MOKA', 
-    'SARANA PRASARANA', 'PEMBUKAAN TEMA', 'MABIT GURU', 'RAPAT', 
-    'DAUROH', 'PRAMABIT', 'KEMAH', 'MABIT SANTRI'
+    'KONSUMSI', 'LISTRIK', 'ATK', 'KEBERSIHAN', 'CETAK SPANDUK', 
+    'CETAK KERTAS', 'PERLENGKAPAN', 'PERALATAN', 'PULSA', 
+    'TRANSPORT', 'ONGKOS KIRIM', 'KAFALAH', 'BINGKISAN', 'SARPRAS'
   ];
 
   const wakproSources = [
@@ -181,7 +183,7 @@ export default function UnitManagement() {
     const transactionTimestamp = `${customDate}T12:00:00`;
 
     if (slug === 'kuttab') {
-      finalProgram = `Kategori: ${kuttabCategory}`;
+      finalProgram = kuttabCategory; // Kategori pengeluaran baru Kuttab
     } else if (slug === 'wakpro') {
       finalProgram = wakproCategory;
       finalDesc = `Penerima: ${receiver} - ${description}`;
@@ -215,22 +217,21 @@ export default function UnitManagement() {
   // FILTER PERIODE WAKTU
   const filteredTransactions = transactions.filter(t => {
     if (!t.created_at) return true;
-    const tDateOnly = t.created_at.split('T')[0]; // YYYY-MM-DD
+    const tDateOnly = t.created_at.split('T')[0];
 
     if (filterMode === 'hari') {
       return tDateOnly === selectedDate;
     } else if (filterMode === 'bulan') {
-      return tDateOnly.startsWith(selectedMonth); // YYYY-MM
+      return tDateOnly.startsWith(selectedMonth);
     } else if (filterMode === 'tahun') {
-      return tDateOnly.startsWith(selectedYear); // YYYY
+      return tDateOnly.startsWith(selectedYear);
     } else if (filterMode === 'rentang') {
       if (!startDate || !endDate) return true;
       return tDateOnly >= startDate && tDateOnly <= endDate;
     }
-    return true; // semua
+    return true;
   });
 
-  // Hitung running balance
   let runningBal = 0;
   const processedTransactions = filteredTransactions.map((t) => {
     const amt = Number(t.amount);
@@ -243,7 +244,6 @@ export default function UnitManagement() {
     ? processedTransactions[processedTransactions.length - 1].currentBalance 
     : 0;
 
-  // HITUNG PERSENTASE & KATEGORI PIE CHART
   const pemasukanList = filteredTransactions.filter(t => t.type === 'Pemasukan');
   const pengeluaranList = filteredTransactions.filter(t => t.type === 'Pengeluaran');
 
@@ -638,7 +638,7 @@ export default function UnitManagement() {
                         );
                       })
                     ) : (
-                      <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Tidak ada catatan transaksi pada periode filter ini.</td></tr>
+                      <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Tidak ada catatan transaksi pada periode filter ini. (Mulai dari 0)</td></tr>
                     )}
                   </tbody>
                 </table>
