@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 
@@ -22,60 +22,68 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg('Gagal masuk: Email atau password salah.');
       setLoading(false);
     } else {
-      // Jika berhasil login, arahkan ke Dashboard
       router.push('/');
-      router.refresh();
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+    <div className="relative flex items-center justify-center min-h-screen px-4 overflow-hidden">
+      {/* Background Image dengan efek gelap tipis agar form kontras */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center z-0 filter brightness-90"
+        style={{ backgroundImage: `url('/bg-login.jfif')` }}
+      />
+      
+      {/* Lapisan Gelap Transparan (Overlay) */}
+      <div className="absolute inset-0 bg-black/40 z-10" />
+
+      {/* Kotak Form Login di Tengah */}
+      <div className="relative z-20 w-full max-w-md bg-white/95 backdrop-blur-sm p-8 rounded-2xl shadow-2xl border border-white/20">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-emerald-700">AMANAH</h1>
-          <p className="text-gray-500 text-sm mt-1">Silakan masuk untuk mengelola keuangan</p>
+          <h2 className="text-3xl font-extrabold text-emerald-800 tracking-wide">AMANAH</h2>
+          <p className="text-sm text-gray-600 mt-1">Sistem Keuangan Terpadu Masjid, Kuttab & Wakpro</p>
         </div>
 
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-xs font-medium rounded-lg text-center">
             {errorMsg}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email Pengurus</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2">Email</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800"
-              placeholder="bendahara@masjid.com"
+              placeholder="nama@email.com"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm bg-white text-gray-800 shadow-sm"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Kata Sandi (Password)</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2">Password</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800"
               placeholder="••••••••"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm bg-white text-gray-800 shadow-sm"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-emerald-700 text-white font-medium rounded-lg hover:bg-emerald-800 transition-colors cursor-pointer disabled:bg-emerald-300"
+            className="w-full py-3.5 bg-emerald-700 text-white font-bold rounded-xl hover:bg-emerald-800 transition-all shadow-md cursor-pointer disabled:bg-emerald-400 text-sm tracking-wide"
           >
-            {loading ? 'Memproses Masuk...' : 'Masuk ke Sistem'}
+            {loading ? 'Memproses Masuk...' : 'Masuk (Login)'}
           </button>
         </form>
       </div>
