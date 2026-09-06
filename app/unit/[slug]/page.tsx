@@ -16,6 +16,14 @@ export default function UnitManagement() {
   const [errorMsg, setErrorMsg] = useState('');
   const [transactions, setTransactions] = useState<any[]>([]);
 
+  // State Filter Periode Tanggal
+  const [filterMode, setFilterMode] = useState<'semua' | 'hari' | 'bulan' | 'tahun' | 'rentang'>('semua');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   const todayDate = new Date().toISOString().split('T')[0];
   const [customDate, setCustomDate] = useState(todayDate);
 
@@ -204,8 +212,27 @@ export default function UnitManagement() {
     loadData();
   };
 
+  // FILTER PERIODE WAKTU
+  const filteredTransactions = transactions.filter(t => {
+    if (!t.created_at) return true;
+    const tDateOnly = t.created_at.split('T')[0]; // YYYY-MM-DD
+
+    if (filterMode === 'hari') {
+      return tDateOnly === selectedDate;
+    } else if (filterMode === 'bulan') {
+      return tDateOnly.startsWith(selectedMonth); // YYYY-MM
+    } else if (filterMode === 'tahun') {
+      return tDateOnly.startsWith(selectedYear); // YYYY
+    } else if (filterMode === 'rentang') {
+      if (!startDate || !endDate) return true;
+      return tDateOnly >= startDate && tDateOnly <= endDate;
+    }
+    return true; // semua
+  });
+
+  // Hitung running balance
   let runningBal = 0;
-  const processedTransactions = transactions.map((t) => {
+  const processedTransactions = filteredTransactions.map((t) => {
     const amt = Number(t.amount);
     if (t.type === 'Pemasukan') runningBal += amt;
     else runningBal -= amt;
@@ -216,13 +243,37 @@ export default function UnitManagement() {
     ? processedTransactions[processedTransactions.length - 1].currentBalance 
     : 0;
 
+  // HITUNG PERSENTASE & KATEGORI PIE CHART
+  const pemasukanList = filteredTransactions.filter(t => t.type === 'Pemasukan');
+  const pengeluaranList = filteredTransactions.filter(t => t.type === 'Pengeluaran');
+
+  const totalIn = pemasukanList.reduce((acc, t) => acc + Number(t.amount), 0);
+  const totalOut = pengeluaranList.reduce((acc, t) => acc + Number(t.amount), 0);
+
+  const groupByCategory = (list: any[]) => {
+    const map: { [key: string]: number } = {};
+    list.forEach(t => {
+      const cat = t.program || 'Lainnya';
+      map[cat] = (map[cat] || 0) + Number(t.amount);
+    });
+    return map;
+  };
+
+  const inCategoryTotals = groupByCategory(pemasukanList);
+  const outCategoryTotals = groupByCategory(pengeluaranList);
+
+  const chartColors = [
+    'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 
+    'bg-pink-500', 'bg-indigo-500', 'bg-teal-500', 'bg-orange-500', 
+    'bg-cyan-500', 'bg-rose-500', 'bg-lime-500', 'bg-violet-500'
+  ];
+
   const formatRupiah = (angka: number) => {
     return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(angka);
   };
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
-      {/* Sidebar Responsif (Atas di HP, Kiri di Laptop/PC) */}
       <aside className="w-full md:w-64 bg-emerald-700 text-white flex flex-row md:flex-col justify-between items-center md:items-stretch p-4 md:p-6 shadow-md">
         <div className="text-xl md:text-2xl font-bold tracking-wider">AMANAH</div>
         <nav className="flex md:flex-col space-x-2 md:space-x-0 md:space-y-2 mt-0 md:mt-4 text-xs md:text-sm">
@@ -231,19 +282,18 @@ export default function UnitManagement() {
       </aside>
 
       <main className="flex-1 p-4 sm:p-6 md:p-10 overflow-y-auto w-full max-w-full">
-        {/* Header Responsif */}
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Manajemen {displayTitle}</h1>
             <p className="text-gray-500 text-xs sm:text-sm mt-1">Pencatatan dan laporan keuangan terisolasi khusus unit ini.</p>
           </div>
           <div className="bg-white px-5 py-3 rounded-xl shadow-sm border border-gray-200 self-start sm:self-auto">
-            <span className="text-xs text-gray-500 block font-medium">Sisa Saldo Saat Ini:</span>
+            <span className="text-xs text-gray-500 block font-medium">Sisa Saldo Periode Ini:</span>
             <span className="text-lg sm:text-xl font-extrabold text-emerald-700">Rp {formatRupiah(finalCalculatedBalance)}</span>
           </div>
         </header>
 
-        {/* Tab Navigasi Responsif */}
+        {/* Tab Navigasi */}
         <div className="flex flex-wrap gap-2 border-b border-gray-200 mb-6 pb-2">
           <button onClick={() => setActiveTab('masuk')} className={`py-2 px-4 sm:px-6 font-semibold text-xs sm:text-sm rounded-lg transition-colors cursor-pointer ${activeTab === 'masuk' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
             📥 Kas Masuk
@@ -252,7 +302,7 @@ export default function UnitManagement() {
             📤 Kas Keluar
           </button>
           <button onClick={() => setActiveTab('laporan')} className={`py-2 px-4 sm:px-6 font-semibold text-xs sm:text-sm rounded-lg transition-colors cursor-pointer ${activeTab === 'laporan' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
-            📊 Laporan & Log
+            📊 Laporan, Grafik & Log
           </button>
         </div>
 
@@ -402,64 +452,199 @@ export default function UnitManagement() {
           </div>
         )}
 
-        {/* TAB LAPORAN & LOG */}
+        {/* TAB LAPORAN, GRAFIK & FILTER PERIODE */}
         {activeTab === 'laporan' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 sm:p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <h3 className="font-bold text-gray-800 text-base sm:text-lg">Log Riwayat Transaksi {displayTitle}</h3>
-              <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 cursor-pointer shadow-sm">
-                Cetak / Unduh PDF
-              </button>
-            </div>
+          <div className="space-y-6">
             
-            {/* Tabel Responsif dengan Scroll Horisontal di HP */}
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[700px]">
-                <thead>
-                  <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-semibold">
-                    <th className="p-3 border-r border-gray-200">Hari / Tanggal</th>
-                    <th className="p-3 border-r border-gray-200">Uraian / Keterangan</th>
-                    <th className="p-3 border-r border-gray-200 text-right">Kredit (Masuk)</th>
-                    <th className="p-3 border-r border-gray-200 text-right">Debet (Keluar)</th>
-                    <th className="p-3 border-r border-gray-200 text-right">Saldo</th>
-                    <th className="p-3">Kategori</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Memuat data...</td></tr>
-                  ) : processedTransactions.length > 0 ? (
-                    processedTransactions.map((trx) => {
-                      const dateFormatted = new Date(trx.created_at).toLocaleDateString('id-ID', {
-                        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-                      });
-                      return (
-                        <tr key={trx.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="p-3 border-r border-gray-200 text-gray-600 whitespace-nowrap">{dateFormatted}</td>
-                          <td className="p-3 border-r border-gray-200 text-gray-800 font-medium">{trx.description}</td>
-                          <td className="p-3 border-r border-gray-200 text-right text-emerald-600 font-medium">
-                            {trx.type === 'Pemasukan' ? formatRupiah(trx.amount) : ''}
-                          </td>
-                          <td className="p-3 border-r border-gray-200 text-right text-red-600 font-medium">
-                            {trx.type === 'Pengeluaran' ? formatRupiah(trx.amount) : ''}
-                          </td>
-                          <td className="p-3 border-r border-gray-200 text-right font-bold text-gray-800">
-                            {formatRupiah(trx.currentBalance)}
-                          </td>
-                          <td className="p-3 text-gray-700">
-                            <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-semibold whitespace-nowrap">
-                              {trx.program || '-'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Belum ada catatan transaksi pada unit ini.</td></tr>
-                  )}
-                </tbody>
-              </table>
+            {/* PANEL KONTROL SORTIR / FILTER PERIODE */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+              <h3 className="font-bold text-gray-800 mb-4 text-sm sm:text-base">🔍 Filter & Sortir Periode Laporan</h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Mode Filter</label>
+                  <select 
+                    value={filterMode} 
+                    onChange={(e) => setFilterMode(e.target.value as any)} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                  >
+                    <option value="semua">Semua Periode</option>
+                    <option value="hari">Per Hari (Harian)</option>
+                    <option value="bulan">Per Bulan (Bulanan)</option>
+                    <option value="tahun">Per Tahun (Tahunan)</option>
+                    <option value="rentang">Rentang Tanggal</option>
+                  </select>
+                </div>
+
+                {filterMode === 'hari' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Pilih Tanggal</label>
+                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                  </div>
+                )}
+
+                {filterMode === 'bulan' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Pilih Bulan & Tahun</label>
+                    <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                  </div>
+                )}
+
+                {filterMode === 'tahun' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Pilih Tahun</label>
+                    <input type="number" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} placeholder="2026" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                  </div>
+                )}
+
+                {filterMode === 'rentang' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Dari Tanggal</label>
+                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Sampai Tanggal</label>
+                      <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* DIAGRAM PIE / CHART PERSENTASE KAS MASUK & KELUAR */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Grafik Kas Masuk */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h3 className="font-bold text-gray-800 mb-2">📥 Persentase Kas Masuk per Kategori</h3>
+                <p className="text-xs text-gray-500 mb-4">Total Masuk: Rp {formatRupiah(totalIn)}</p>
+
+                {Object.keys(inCategoryTotals).length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden flex shadow-inner">
+                      {Object.entries(inCategoryTotals).map(([cat, amount], idx) => {
+                        const pct = totalIn > 0 ? (amount / totalIn) * 100 : 0;
+                        const color = chartColors[idx % chartColors.length];
+                        return <div key={cat} style={{ width: `${pct}%` }} className={`h-full ${color}`} title={`${cat}: ${formatRupiah(amount)} (${pct.toFixed(1)}%)`} />;
+                      })}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {Object.entries(inCategoryTotals).map(([cat, amount], idx) => {
+                        const pct = totalIn > 0 ? (amount / totalIn) * 100 : 0;
+                        const color = chartColors[idx % chartColors.length];
+                        return (
+                          <div key={cat} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100">
+                            <div className="flex items-center space-x-2 truncate">
+                              <span className={`w-3 h-3 rounded-full ${color} shrink-0`} />
+                              <span className="font-medium text-gray-700 truncate">{cat}</span>
+                            </div>
+                            <span className="font-bold text-gray-800">{pct.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 text-center py-6">Tidak ada data pemasukan pada periode ini.</p>
+                )}
+              </div>
+
+              {/* Grafik Kas Keluar */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h3 className="font-bold text-gray-800 mb-2">📤 Persentase Kas Keluar per Kategori</h3>
+                <p className="text-xs text-gray-500 mb-4">Total Keluar: Rp {formatRupiah(totalOut)}</p>
+
+                {Object.keys(outCategoryTotals).length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden flex shadow-inner">
+                      {Object.entries(outCategoryTotals).map(([cat, amount], idx) => {
+                        const pct = totalOut > 0 ? (amount / totalOut) * 100 : 0;
+                        const color = chartColors[idx % chartColors.length];
+                        return <div key={cat} style={{ width: `${pct}%` }} className={`h-full ${color}`} title={`${cat}: ${formatRupiah(amount)} (${pct.toFixed(1)}%)`} />;
+                      })}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {Object.entries(outCategoryTotals).map(([cat, amount], idx) => {
+                        const pct = totalOut > 0 ? (amount / totalOut) * 100 : 0;
+                        const color = chartColors[idx % chartColors.length];
+                        return (
+                          <div key={cat} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100">
+                            <div className="flex items-center space-x-2 truncate">
+                              <span className={`w-3 h-3 rounded-full ${color} shrink-0`} />
+                              <span className="font-medium text-gray-700 truncate">{cat}</span>
+                            </div>
+                            <span className="font-bold text-gray-800">{pct.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 text-center py-6">Tidak ada data pengeluaran pada periode ini.</p>
+                )}
+              </div>
+
+            </div>
+
+            {/* TABEL LOG RIWAYAT TRANSAKSI */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-4 sm:p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h3 className="font-bold text-gray-800 text-base sm:text-lg">Log Riwayat Transaksi {displayTitle} ({processedTransactions.length} Data)</h3>
+                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 cursor-pointer shadow-sm">
+                  Cetak / Unduh PDF
+                </button>
+              </div>
+              
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[700px]">
+                  <thead>
+                    <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-semibold">
+                      <th className="p-3 border-r border-gray-200">Hari / Tanggal</th>
+                      <th className="p-3 border-r border-gray-200">Uraian / Keterangan</th>
+                      <th className="p-3 border-r border-gray-200 text-right">Kredit (Masuk)</th>
+                      <th className="p-3 border-r border-gray-200 text-right">Debet (Keluar)</th>
+                      <th className="p-3 border-r border-gray-200 text-right">Saldo</th>
+                      <th className="p-3">Kategori</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Memuat data...</td></tr>
+                    ) : processedTransactions.length > 0 ? (
+                      processedTransactions.map((trx) => {
+                        const dateFormatted = new Date(trx.created_at).toLocaleDateString('id-ID', {
+                          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                        });
+                        return (
+                          <tr key={trx.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="p-3 border-r border-gray-200 text-gray-600 whitespace-nowrap">{dateFormatted}</td>
+                            <td className="p-3 border-r border-gray-200 text-gray-800 font-medium">{trx.description}</td>
+                            <td className="p-3 border-r border-gray-200 text-right text-emerald-600 font-medium">
+                              {trx.type === 'Pemasukan' ? formatRupiah(trx.amount) : ''}
+                            </td>
+                            <td className="p-3 border-r border-gray-200 text-right text-red-600 font-medium">
+                              {trx.type === 'Pengeluaran' ? formatRupiah(trx.amount) : ''}
+                            </td>
+                            <td className="p-3 border-r border-gray-200 text-right font-bold text-gray-800">
+                              {formatRupiah(trx.currentBalance)}
+                            </td>
+                            <td className="p-3 text-gray-700">
+                              <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-semibold whitespace-nowrap">
+                                {trx.program || 'Lainnya'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr><td colSpan={6} className="p-6 text-center text-gray-500 py-12">Tidak ada catatan transaksi pada periode filter ini.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
         )}
       </main>
