@@ -140,7 +140,6 @@ export default function UnitManagement() {
       finalProgram = masjidSource;
     }
 
-    // Simpan Kas Masuk
     const { error } = await supabase.from('transactions').insert([{
       type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: transactionTimestamp
     }]);
@@ -151,7 +150,6 @@ export default function UnitManagement() {
       return;
     }
 
-    // UPDATE OTOMATIS SALDO AKUN UTAMA
     const newBalance = balance + numericAmount;
     await supabase.from('accounts').update({ balance: newBalance }).eq('name', currentAccountName);
     setBalance(newBalance);
@@ -195,7 +193,6 @@ export default function UnitManagement() {
       finalDesc = `Penerima: ${receiver} - ${description}`;
     }
 
-    // Simpan Transaksi Keluar
     const { error } = await supabase.from('transactions').insert([{
       type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: transactionTimestamp
     }]);
@@ -206,7 +203,6 @@ export default function UnitManagement() {
       return;
     }
 
-    // UPDATE OTOMATIS SALDO AKUN UTAMA
     const newBalance = balance - numericAmount;
     await supabase.from('accounts').update({ balance: newBalance }).eq('name', currentAccountName);
     setBalance(newBalance);
@@ -241,6 +237,11 @@ export default function UnitManagement() {
     return { ...t, currentBalance: runningBal };
   });
 
+  // Ambil saldo akhir langsung dari baris terakhir tabel log agar 100% sinkron
+  const finalCalculatedBalance = processedTransactions.length > 0 
+    ? processedTransactions[processedTransactions.length - 1].currentBalance 
+    : balance;
+
   const formatRupiah = (angka: number) => {
     return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(angka);
   };
@@ -262,7 +263,8 @@ export default function UnitManagement() {
           </div>
           <div className="mt-4 md:mt-0 bg-white px-6 py-3 rounded-xl shadow-sm border border-gray-200">
             <span className="text-xs text-gray-500 block font-medium">Sisa Saldo Saat Ini:</span>
-            <span className="text-xl font-extrabold text-emerald-700">Rp {formatRupiah(balance)}</span>
+            {/* Menggunakan nilai sinkron dari baris terakhir laporan */}
+            <span className="text-xl font-extrabold text-emerald-700">Rp {formatRupiah(finalCalculatedBalance)}</span>
           </div>
         </header>
 
