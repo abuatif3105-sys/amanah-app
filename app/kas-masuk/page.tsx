@@ -15,7 +15,6 @@ export default function KasMasuk() {
   const [successMsg, setSuccessMsg] = useState('');
   const router = useRouter();
 
-  // Cek apakah sudah login
   useEffect(() => {
     async function checkSession() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -32,12 +31,15 @@ export default function KasMasuk() {
     setSuccessMsg('');
 
     const numericAmount = Number(amount);
-    const accountName = unit === 'Masjid' ? 'Kas Masjid' : 'Kas Kuttab';
     
-    // Tentukan nama program (jika pilih 'Lainnya', ambil dari text input kustom)
+    // Tentukan nama akun tujuan berdasarkan unit yang dipilih
+    let accountName = 'Kas Masjid';
+    if (unit === 'Kuttab') accountName = 'Kas Kuttab';
+    if (unit === 'Wakpro') accountName = 'Kas Wakpro';
+    
     const finalProgram = program === 'Lainnya' ? (customProgram || 'Program Khusus') : program;
 
-    // 1. Masukkan ke tabel transactions beserta unit dan program-nya
+    // 1. Masukkan ke tabel transactions
     const { error: trxError } = await supabase
       .from('transactions')
       .insert([{ type: 'Pemasukan', unit, program: finalProgram, description, amount: numericAmount }]);
@@ -48,7 +50,7 @@ export default function KasMasuk() {
       return;
     }
 
-    // 2. Ambil saldo akun yang sesuai (Kas Masjid / Kas Kuttab)
+    // 2. Ambil saldo akun yang sesuai di tabel accounts
     const { data: accData } = await supabase
       .from('accounts')
       .select('*')
@@ -60,7 +62,6 @@ export default function KasMasuk() {
       const currentBalance = Number(accData[0].balance);
       const newBalance = currentBalance + numericAmount;
 
-      // Update saldo akun tersebut
       await supabase
         .from('accounts')
         .update({ balance: newBalance })
@@ -91,7 +92,6 @@ export default function KasMasuk() {
           <Link href="/laporan" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Laporan</Link>
         </nav>
         
-        {/* Tombol Logout */}
         <div className="p-4 border-t border-emerald-600">
           <button
             onClick={handleLogout}
@@ -105,8 +105,8 @@ export default function KasMasuk() {
       {/* Konten Utama */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Masuk & Donasi</h1>
-          <p className="text-gray-500 mt-1">Catat infak, sedekah, atau donasi terarah berdasarkan program</p>
+          <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Masuk & Wakpro</h1>
+          <p className="text-gray-500 mt-1">Catat pemasukan untuk Masjid, Kas Kuttab, atau Wakaf Produktif (Wakpro)</p>
         </header>
 
         <div className="max-w-xl bg-white p-8 rounded-xl shadow-sm border border-gray-100">
@@ -126,26 +126,27 @@ export default function KasMasuk() {
               >
                 <option value="Masjid">Kas Masjid</option>
                 <option value="Kuttab">Kas Kuttab</option>
+                <option value="Wakpro">Kas Wakpro (Wakaf Produktif)</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Program / Tujuan Donasi</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Program / Sumber Masuk</label>
               <select
                 value={program}
                 onChange={(e) => setProgram(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
               >
                 <option value="Infaq Umum">Infaq / Operasional Umum</option>
+                <option value="Alokasi dari Kas Wakpro">Alokasi dari Kas Wakpro (Untuk Kuttab)</option>
+                <option value="Hasil Wakaf Produktif">Hasil Usaha Wakaf Produktif (Wakpro)</option>
                 <option value="Jumat Berkah">Jumat Berkah</option>
                 <option value="Pembangunan / Renovasi">Pembangunan / Renovasi</option>
                 <option value="Santunan Yatim & Dhuafa">Santunan Yatim & Dhuafa</option>
-                <option value="Beasiswa Santri / Pelajar">Beasiswa Santri / Pelajar</option>
                 <option value="Lainnya">Lainnya (Tulis Sendiri)</option>
               </select>
             </div>
 
-            {/* Input kustom jika memilih 'Lainnya' */}
             {program === 'Lainnya' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Nama Program Lainnya</label>
@@ -154,19 +155,20 @@ export default function KasMasuk() {
                   required
                   value={customProgram}
                   onChange={(e) => setCustomProgram(e.target.value)}
-                  placeholder="Contoh: Wakaf Al-Qur'an / Perbaikan AC"
+                  placeholder="Contoh: Wakaf Tunai / Bantuan Khusus"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
                 />
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Nama Donatur (Opsional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Sumber Dana</label>
               <input
                 type="text"
+                required
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Contoh: Hamba Allah / Bpk. Ahmad"
+                placeholder="Contoh: Transfer hasil panen wakaf / Donatur hamba Allah"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
               />
             </div>
@@ -178,7 +180,7 @@ export default function KasMasuk() {
                 required
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="Contoh: 500000"
+                placeholder="Contoh: 1000000"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
               />
             </div>

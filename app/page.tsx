@@ -9,10 +9,10 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [saldoMasjid, setSaldoMasjid] = useState(0);
   const [saldoKuttab, setSaldoKuttab] = useState(0);
+  const [saldoWakpro, setSaldoWakpro] = useState(0);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Cek apakah sudah login
   useEffect(() => {
     async function checkSession() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -25,7 +25,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchData() {
-      // Ambil transaksi terbaru
       const { data: trxData } = await supabase
         .from('transactions')
         .select('*')
@@ -34,7 +33,6 @@ export default function Dashboard() {
       
       if (trxData) setTransactions(trxData);
 
-      // Ambil saldo dari tabel accounts (Kas Masjid & Kas Kuttab)
       const { data: accData } = await supabase
         .from('accounts')
         .select('*');
@@ -45,6 +43,8 @@ export default function Dashboard() {
             setSaldoMasjid(Number(acc.balance));
           } else if (acc.name === 'Kas Kuttab') {
             setSaldoKuttab(Number(acc.balance));
+          } else if (acc.name === 'Kas Wakpro') {
+            setSaldoWakpro(Number(acc.balance));
           }
         });
       }
@@ -79,7 +79,6 @@ export default function Dashboard() {
           <Link href="/laporan" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Laporan</Link>
         </nav>
         
-        {/* Tombol Logout */}
         <div className="p-4 border-t border-emerald-600">
           <button
             onClick={handleLogout}
@@ -93,23 +92,30 @@ export default function Dashboard() {
       {/* Konten Utama */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Ringkasan Keuangan Terpisah Masjid & Kuttab Al-Fatih</p>
+          <h1 className="text-3xl font-bold text-gray-800">Dashboard Keuangan</h1>
+          <p className="text-gray-500 mt-1">Ringkasan Saldo: Masjid, Kuttab, dan Wakaf Produktif (Wakpro)</p>
         </header>
 
-        {/* Kartu Ringkasan Saldo Terpisah */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* Kartu Ringkasan 3 Saldo Terpisah */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-600">
             <p className="text-gray-500 text-sm font-medium">Saldo Kas Masjid</p>
-            <h3 className="text-3xl font-bold text-gray-800 mt-2">
+            <h3 className="text-2xl font-bold text-gray-800 mt-2">
               {loading ? 'Memuat...' : formatRupiah(saldoMasjid)}
             </h3>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-600">
             <p className="text-gray-500 text-sm font-medium">Saldo Kas Kuttab</p>
-            <h3 className="text-3xl font-bold text-gray-800 mt-2">
+            <h3 className="text-2xl font-bold text-gray-800 mt-2">
               {loading ? 'Memuat...' : formatRupiah(saldoKuttab)}
+            </h3>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500">
+            <p className="text-gray-500 text-sm font-medium">Saldo Kas Wakpro</p>
+            <h3 className="text-2xl font-bold text-gray-800 mt-2">
+              {loading ? 'Memuat...' : formatRupiah(saldoWakpro)}
             </h3>
           </div>
         </div>
@@ -144,7 +150,11 @@ export default function Dashboard() {
                         {new Date(trx.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </td>
                       <td className="p-4 text-sm">
-                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${trx.unit === 'Kuttab' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
+                          trx.unit === 'Kuttab' ? 'bg-blue-50 text-blue-700' : 
+                          trx.unit === 'Wakpro' ? 'bg-amber-50 text-amber-700' : 
+                          'bg-emerald-50 text-emerald-700'
+                        }`}>
                           {trx.unit || 'Masjid'}
                         </span>
                       </td>
