@@ -8,9 +8,7 @@ import { supabase } from '../lib/supabase';
 export default function Dashboard() {
   const [userEmail, setUserEmail] = useState('');
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [saldoMasjid, setSaldoMasjid] = useState(0);
   const [saldoKuttab, setSaldoKuttab] = useState(0);
-  const [saldoWakpro, setSaldoWakpro] = useState(0);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -29,27 +27,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchData() {
-      // Jika akun khusus kuttab, ambil transaksi yang unitnya 'Kuttab' saja
-      let trxQuery = supabase
+      // Ambil seluruh data transaksi
+      const { data: trxData } = await supabase
         .from('transactions')
         .select('*')
         .order('created_at', { ascending: false });
-
-      const { data: trxData } = await trxQuery;
+      
       if (trxData) setTransactions(trxData);
 
+      // Ambil saldo akun
       const { data: accData } = await supabase
         .from('accounts')
         .select('*');
 
       if (accData) {
         accData.forEach((acc) => {
-          if (acc.name === 'Kas Masjid') {
-            setSaldoMasjid(Number(acc.balance));
-          } else if (acc.name === 'Kas Kuttab') {
+          if (acc.name === 'Kas Kuttab') {
             setSaldoKuttab(Number(acc.balance));
-          } else if (acc.name === 'Kas Wakpro') {
-            setSaldoWakpro(Number(acc.balance));
           }
         });
       }
@@ -72,17 +66,17 @@ export default function Dashboard() {
     router.push('/login');
   };
 
-  // Cek apakah akun yang login adalah akun khusus Kuttab
-  const isKuttabOnly = userEmail === 'kuttab@amanah.com';
+  // Cek apakah email yang login adalah tu@kafmedan.com (atau mengandung kata 'kuttab' / 'tu')
+  const isKuttabOnly = userEmail === 'tu@kafmedan.com' || userEmail.includes('kuttab');
 
-  // Filter transaksi khusus untuk tampilan kas kuttab jika akun kuttab
+  // Filter transaksi khusus Kuttab saja jika akun khusus Kuttab
   const displayedTransactions = isKuttabOnly 
     ? transactions.filter(t => t.unit === 'Kuttab')
-    : transactions.slice(0, 5);
+    : transactions;
 
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar Navigasi Dinamis */}
+      {/* Sidebar Navigasi */}
       <aside className="w-64 bg-emerald-700 text-white flex flex-col hidden md:flex">
         <div className="p-6 text-2xl font-bold border-b border-emerald-600">AMANAH</div>
         <nav className="flex-1 p-4 space-y-2 text-sm">
@@ -110,48 +104,24 @@ export default function Dashboard() {
       {/* Konten Utama */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">
-            {isKuttabOnly ? 'Dashboard Pengelola Kuttab' : 'Dashboard Keuangan'}
-          </h1>
-          <p className="text-gray-500 mt-1">
-            {isKuttabOnly ? 'Ringkasan khusus pengelolaan saldo dan operasional Kuttab Al-Fatih' : 'Ringkasan Saldo: Masjid, Kuttab, dan Wakaf Produktif (Wakpro)'}
-          </p>
+          <h1 className="text-3xl font-bold text-gray-800">Dashboard Pengelola Kuttab</h1>
+          <p className="text-gray-500 mt-1">Ringkasan khusus pengelolaan saldo dan operasional Kuttab Al-Fatih</p>
         </header>
 
-        {/* Kartu Ringkasan Saldo (Jika akun Kuttab, hanya tampilkan Saldo Kas Kuttab) */}
-        <div className={`grid grid-cols-1 ${isKuttabOnly ? 'md:grid-cols-1 max-w-md' : 'md:grid-cols-3'} gap-6 mb-8`}>
-          {!isKuttabOnly && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-600">
-              <p className="text-gray-500 text-sm font-medium">Saldo Kas Masjid</p>
-              <h3 className="text-2xl font-bold text-gray-800 mt-2">
-                {loading ? 'Memuat...' : formatRupiah(saldoMasjid)}
-              </h3>
-            </div>
-          )}
-
+        {/* Kartu Ringkasan Saldo (Hanya Menampilkan Saldo Kas Kuttab) */}
+        <div className="grid grid-cols-1 md:grid-cols-1 max-w-md gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-600">
             <p className="text-gray-500 text-sm font-medium">Saldo Kas Kuttab</p>
-            <h3 className="text-2xl font-bold text-gray-800 mt-2">
+            <h3 className="text-3xl font-bold text-gray-800 mt-2">
               {loading ? 'Memuat...' : formatRupiah(saldoKuttab)}
             </h3>
           </div>
-
-          {!isKuttabOnly && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500">
-              <p className="text-gray-500 text-sm font-medium">Saldo Kas Wakpro</p>
-              <h3 className="text-2xl font-bold text-gray-800 mt-2">
-                {loading ? 'Memuat...' : formatRupiah(saldoWakpro)}
-              </h3>
-            </div>
-          )}
         </div>
 
-        {/* Tabel Transaksi */}
+        {/* Tabel Transaksi Kuttab */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">
-              {isKuttabOnly ? 'Riwayat Transaksi Kas Kuttab' : 'Transaksi Terbaru'}
-            </h3>
+            <h3 className="font-bold text-gray-800">Riwayat Transaksi Kas Kuttab</h3>
           </div>
           
           <div className="overflow-x-auto">
@@ -196,7 +166,7 @@ export default function Dashboard() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500">Belum ada transaksi Kuttab.</td>
+                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">Belum ada transaksi Kuttab.</td>
                   </tr>
                 )}
               </tbody>
