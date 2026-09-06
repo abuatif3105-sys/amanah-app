@@ -1,19 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 
-export default function KasMasuk() {
-  const [unit, setUnit] = useState('Masjid');
-  const [sourceOption, setSourceOption] = useState('Kas Wakpro');
-  const [customSource, setCustomSource] = useState('');
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+export default function LaporanKeuangan() {
+  const [userEmail, setUserEmail] = useState('');
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [filterUnit, setFilterUnit] = useState('Semua');
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -21,109 +17,53 @@ export default function KasMasuk() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         router.push('/login');
+      } else {
+        setUserEmail(session.user.email || '');
       }
     }
     checkSession();
   }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setSuccessMsg('');
-    setErrorMsg('');
-
-    const numericAmount = Number(amount);
-    if (numericAmount <= 0) {
-      setErrorMsg('Jumlah nominal harus lebih besar dari 0.');
-      setLoading(false);
-      return;
-    }
-
-    let accountName = 'Kas Masjid';
-    if (unit === 'Kuttab') accountName = 'Kas Kuttab';
-    if (unit === 'Wakpro') accountName = 'Kas Wakpro';
-
-    // Tentukan program/sumber dana
-    let finalProgram = sourceOption;
-    if (unit === 'Kuttab') {
-      finalProgram = sourceOption === 'Kas Wakpro' ? 'Kas Wakpro' : (customSource || 'Lainnya');
-    }
-
-    // KHUSUS KAS KUTTAB DARI KAS WAKPRO: Validasi dan kurangi saldo Kas Wakpro
-    if (unit === 'Kuttab' && sourceOption === 'Kas Wakpro') {
-      const { data: wakproAcc, error: wakproErr } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('name', 'Kas Wakpro')
-        .limit(1);
-
-      if (wakproErr || !wakproAcc || wakproAcc.length === 0) {
-        setErrorMsg('Gagal memeriksa saldo Kas Wakpro.');
-        setLoading(false);
-        return;
-      }
-
-      const wakproId = wakproAcc[0].id;
-      const wakproBalance = Number(wakproAcc[0].balance);
-
-      if (numericAmount > wakproBalance) {
-        setErrorMsg(`Gagal: Saldo Kas Wakpro tidak mencukupi (Sisa: Rp ${wakproBalance.toLocaleString('id-ID')})!`);
-        setLoading(false);
-        return;
-      }
-
-      // Kurangi saldo Kas Wakpro secara otomatis
-      await supabase
-        .from('accounts')
-        .update({ balance: wakproBalance - numericAmount })
-        .eq('id', wakproId);
-
-      // Catat juga sebagai pengeluaran/alokasi di Kas Wakpro agar riwayatnya transparan
-      await supabase
+  useEffect(() => {
+    async function fetchData() {
+      const { data } = await supabase
         .from('transactions')
-        .insert([{ 
-          type: 'Pengeluaran', 
-          unit: 'Wakpro', 
-          program: 'Alokasi ke Kas Kuttab', 
-          description: `Alokasi dana ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, 
-          amount: numericAmount 
-        }]);
-    }
-
-    // 1. Masukkan transaksi pemasukan ke unit tujuan
-    const { error: trxError } = await supabase
-      .from('transactions')
-      .insert([{ type: 'Pemasukan', unit, program: finalProgram, description, amount: numericAmount }]);
-
-    if (trxError) {
-      setErrorMsg('Gagal menyimpan transaksi: ' + trxError.message);
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (data) setTransactions(data);
       setLoading(false);
-      return;
     }
+    fetchData();
+  }, []);
 
-    // 2. Tambah saldo di akun tujuan
-    const { data: accData } = await supabase
-      .from('accounts')
-      .select('*')
-      .eq('name', accountName)
-      .limit(1);
+  const isKuttabOnly = userEmail === 'tu@kafmedan.com' || userEmail.includes('kuttab');
 
-    if (accData && accData.length > 0) {
-      const currentId = accData[0].id;
-      const currentBalance = Number(accData[0].balance);
-      const newBalance = currentBalance + numericAmount;
+  // Jika akun Kuttab, paksa filter unit hanya 'Kuttab'
+  const effectiveFilter = isKuttabOnly ? 'Kuttab' : filterUnit;
 
-      await supabase
-        .from('accounts')
-        .update({ balance: newBalance })
-        .eq('id', currentId);
+  const filteredTransactions = transactions.filter((trx) => {
+    if (effectiveFilter === 'Semua') return true;
+    return (trx.unit || 'Masjid') === effectiveFilter;
+  });
+
+  let totalPemasukan = 0;
+  let totalPengeluaran = 0;
+
+  filteredTransactions.forEach((trx) => {
+    if (trx.type === 'Pemasukan') {
+      totalPemasukan += Number(trx.amount);
+    } else if (trx.type === 'Pengeluaran') {
+      totalPengeluaran += Number(trx.amount);
     }
+  });
 
-    setLoading(false);
-    setDescription('');
-    setAmount('');
-    setCustomSource('');
-    setSuccessMsg(`Alhamdulillah, Kas Masuk untuk ${unit} berhasil dicatat!`);
+  const formatRupiah = (angka: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0
+    }).format(angka);
   };
 
   const handleLogout = async () => {
@@ -133,141 +73,130 @@ export default function KasMasuk() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar Navigasi */}
       <aside className="w-64 bg-emerald-700 text-white flex flex-col hidden md:flex">
         <div className="p-6 text-2xl font-bold border-b border-emerald-600">AMANAH</div>
         <nav className="flex-1 p-4 space-y-2 text-sm">
           <Link href="/" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Dashboard</Link>
-          <Link href="/kas-masuk" className="block p-3 bg-emerald-800 rounded-lg font-medium transition-colors">Kas Masuk</Link>
+          <Link href="/kas-masuk" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Masuk</Link>
           <Link href="/kas-keluar" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Keluar</Link>
-          <Link href="/laporan" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Laporan</Link>
+          <Link href="/laporan" className="block p-3 bg-emerald-800 rounded-lg font-medium transition-colors">
+            {isKuttabOnly ? 'Laporan Kuttab' : 'Laporan'}
+          </Link>
         </nav>
         
         <div className="p-4 border-t border-emerald-600">
-          <button
-            onClick={handleLogout}
-            className="w-full py-2 px-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer text-center"
-          >
+          <div className="mb-2 text-xs text-emerald-200 truncate" title={userEmail}>Login: {userEmail}</div>
+          <button onClick={handleLogout} className="w-full py-2 px-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer text-center">
             Keluar (Logout)
           </button>
         </div>
       </aside>
 
-      {/* Konten Utama */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Masuk</h1>
-          <p className="text-gray-500 mt-1">Catat pemasukan untuk Masjid, Kas Kuttab, atau Wakaf Produktif (Wakpro)</p>
-        </header>
-
-        <div className="max-w-xl bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-          {successMsg && (
-            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-sm font-medium">
-              {successMsg}
-            </div>
-          )}
-
-          {errorMsg && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-lg text-sm font-medium">
-              {errorMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Unit Tujuan Kas</label>
+        <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">
+              {isKuttabOnly ? 'Laporan Keuangan Kas Kuttab' : 'Laporan Keuangan Terpadu'}
+            </h1>
+            <p className="text-gray-500 mt-1">
+              {isKuttabOnly ? 'Log seluruh riwayat transaksi khusus Kas Kuttab' : 'Rekapitulasi riwayat transaksi Masjid, Kuttab, dan Wakpro'}
+            </p>
+          </div>
+          <div className="mt-4 md:mt-0 flex items-center space-x-3">
+            {!isKuttabOnly && (
               <select
-                value={unit}
-                onChange={(e) => {
-                  setUnit(e.target.value);
-                  if (e.target.value === 'Kuttab') {
-                    setSourceOption('Kas Wakpro');
-                  }
-                }}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
+                value={filterUnit}
+                onChange={(e) => setFilterUnit(e.target.value)}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
+                <option value="Semua">Semua Unit</option>
                 <option value="Masjid">Kas Masjid</option>
                 <option value="Kuttab">Kas Kuttab</option>
-                <option value="Wakpro">Kas Wakpro (Wakaf Produktif)</option>
+                <option value="Wakpro">Kas Wakpro</option>
               </select>
-            </div>
-
-            {/* Jika unit Kuttab dipilih, tampilkan 2 pilihan Sumber Dana sesuai permintaan */}
-            {unit === 'Kuttab' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Sumber Dana Kas Kuttab</label>
-                <select
-                  value={sourceOption}
-                  onChange={(e) => setSourceOption(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
-                >
-                  <option value="Kas Wakpro">1. Kas Wakpro (Otomatis mengurangi saldo Kas Wakpro)</option>
-                  <option value="Lainnya">2. Lainnya (Tulis Sendiri)</option>
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Program / Sumber Masuk</label>
-                <select
-                  value={sourceOption}
-                  onChange={(e) => setSourceOption(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
-                >
-                  <option value="Infaq Umum">Infaq / Operasional Umum</option>
-                  <option value="Hasil Wakaf Produktif">Hasil Usaha Wakaf Produktif</option>
-                  <option value="Donasi / Wakaf Tunai">Donasi / Wakaf Tunai</option>
-                  <option value="Lainnya">Lainnya (Tulis Sendiri)</option>
-                </select>
-              </div>
             )}
 
-            {/* Input teks kustom jika memilih Lainnya */}
-            {sourceOption === 'Lainnya' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan Sumber Lainnya</label>
-                <input
-                  type="text"
-                  required
-                  value={customSource}
-                  onChange={(e) => setCustomSource(e.target.value)}
-                  placeholder="Contoh: Infak Umum / Bantuan Donatur"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Catatan Transaksi</label>
-              <input
-                type="text"
-                required
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Contoh: Alokasi bulanan operasional kuttab"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Nominal (Rp)</label>
-              <input
-                type="number"
-                required
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Contoh: 1000000"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-emerald-700 text-white font-medium rounded-lg hover:bg-emerald-800 transition-colors cursor-pointer disabled:bg-emerald-300 text-sm"
+            <button 
+              onClick={() => window.print()} 
+              className="px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
             >
-              {loading ? 'Menyimpan...' : 'Simpan Kas Masuk'}
+              Cetak / Unduh PDF
             </button>
-          </form>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-sm font-medium">Akumulasi Pemasukan Kas Kuttab</p>
+              <h3 className="text-2xl font-bold text-emerald-600 mt-1">{formatRupiah(totalPemasukan)}</h3>
+            </div>
+            <div className="p-3 bg-emerald-50 rounded-full text-emerald-600 text-xl">📥</div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-sm font-medium">Akumulasi Pengeluaran Kas Kuttab</p>
+              <h3 className="text-2xl font-bold text-red-600 mt-1">{formatRupiah(totalPengeluaran)}</h3>
+            </div>
+            <div className="p-3 bg-red-50 rounded-full text-red-600 text-xl">📤</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">Log Riwayat Transaksi Kas Kuttab</h3>
+            <span className="text-xs text-gray-400">Total: {filteredTransactions.length} catatan</span>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100 text-sm text-gray-500">
+                  <th className="p-4 font-medium">Tanggal</th>
+                  <th className="p-4 font-medium">Unit</th>
+                  <th className="p-4 font-medium">Program / Kategori</th>
+                  <th className="p-4 font-medium">Keterangan</th>
+                  <th className="p-4 font-medium">Jenis</th>
+                  <th className="p-4 font-medium text-right">Jumlah</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">Memuat laporan...</td>
+                  </tr>
+                ) : filteredTransactions.length > 0 ? (
+                  filteredTransactions.map((trx) => (
+                    <tr key={trx.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="p-4 text-sm text-gray-600">
+                        {new Date(trx.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="p-4 text-sm">
+                        <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700">
+                          {trx.unit || 'Kuttab'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm font-semibold text-gray-800">{trx.program || '-'}</td>
+                      <td className="p-4 text-sm text-gray-600">{trx.description || '-'}</td>
+                      <td className="p-4 text-sm">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${trx.type === 'Pemasukan' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                          {trx.type}
+                        </span>
+                      </td>
+                      <td className={`p-4 text-sm font-bold text-right ${trx.type === 'Pemasukan' ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {trx.type === 'Pemasukan' ? '+' : '-'} {formatRupiah(trx.amount)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">Belum ada riwayat transaksi Kas Kuttab.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </main>
     </div>
