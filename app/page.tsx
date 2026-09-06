@@ -26,21 +26,41 @@ export default function Dashboard() {
   }, [router]);
 
   useEffect(() => {
-    async function fetchData() {
-      const { data: accData } = await supabase
-        .from('accounts')
+    async function fetchBalances() {
+      // Ambil seluruh transaksi untuk menghitung saldo secara real-time dan akurat
+      const { data: trxData } = await supabase
+        .from('transactions')
         .select('*');
 
-      if (accData) {
-        accData.forEach((acc) => {
-          if (acc.name === 'Kas Masjid') setSaldoMasjid(Number(acc.balance));
-          if (acc.name === 'Kas Kuttab') setSaldoKuttab(Number(acc.balance));
-          if (acc.name === 'Kas Wakpro') setSaldoWakpro(Number(acc.balance));
+      let mTotal = 0;
+      let kTotal = 0;
+      let wTotal = 0;
+
+      if (trxData) {
+        trxData.forEach((trx) => {
+          const amt = Number(trx.amount);
+          const unit = trx.unit;
+          const type = trx.type;
+
+          if (unit === 'Masjid') {
+            if (type === 'Pemasukan') mTotal += amt;
+            else mTotal -= amt;
+          } else if (unit === 'Kuttab') {
+            if (type === 'Pemasukan') kTotal += amt;
+            else kTotal -= amt;
+          } else if (unit === 'Wakpro') {
+            if (type === 'Pemasukan') wTotal += amt;
+            else wTotal -= amt;
+          }
         });
       }
+
+      setSaldoMasjid(mTotal);
+      setSaldoKuttab(kTotal);
+      setSaldoWakpro(wTotal);
       setLoading(false);
     }
-    fetchData();
+    fetchBalances();
   }, []);
 
   const formatRupiah = (angka: number) => {
@@ -82,7 +102,6 @@ export default function Dashboard() {
         {/* 3 Tombol Kartu Saldo Utama */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           
-          {/* Kartu Kas Masjid (Hanya muncul jika bukan akun khusus kuttab) */}
           {!isKuttabOnly && (
             <div 
               onClick={() => router.push('/unit/masjid')}
@@ -100,7 +119,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Kartu Kas Kuttab */}
           <div 
             onClick={() => router.push('/unit/kuttab')}
             className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 border-l-8 border-l-blue-600 hover:shadow-md transition-all cursor-pointer group"
@@ -116,7 +134,6 @@ export default function Dashboard() {
             <p className="text-xs text-blue-700 mt-4 font-medium">Klik untuk kelola Masuk, Keluar & Laporan Kuttab</p>
           </div>
 
-          {/* Kartu Kas Wakpro (Hanya muncul jika bukan akun khusus kuttab) */}
           {!isKuttabOnly && (
             <div 
               onClick={() => router.push('/unit/wakpro')}

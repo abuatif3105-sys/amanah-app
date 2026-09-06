@@ -11,7 +11,6 @@ export default function UnitManagement() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'masuk' | 'keluar' | 'laporan'>('masuk');
-  const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -69,16 +68,6 @@ export default function UnitManagement() {
       return;
     }
 
-    const { data: accData } = await supabase
-      .from('accounts')
-      .select('*')
-      .eq('name', currentAccountName)
-      .limit(1);
-
-    if (accData && accData.length > 0) {
-      setBalance(Number(accData[0].balance));
-    }
-
     const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
     const { data: trxData } = await supabase
       .from('transactions')
@@ -119,22 +108,24 @@ export default function UnitManagement() {
       finalProgram = kuttabSource === 'Kas Wakpro' ? 'Kas Wakpro' : (customKuttabSource || 'Lainnya');
       
       if (kuttabSource === 'Kas Wakpro') {
-        const { data: wakproAcc } = await supabase.from('accounts').select('*').eq('name', 'Kas Wakpro').limit(1);
-        if (wakproAcc && wakproAcc.length > 0) {
-          const wId = wakproAcc[0].id;
-          const wBal = Number(wakproAcc[0].balance);
-          if (numericAmount > wBal) {
-            setErrorMsg(`Gagal: Saldo Kas Wakpro tidak mencukupi (Sisa: Rp ${wBal.toLocaleString('id-ID')})!`);
-            setLoading(false);
-            return;
-          }
-          const newWakproBal = wBal - numericAmount;
-          await supabase.from('accounts').update({ balance: newWakproBal }).eq('id', wId);
-          await supabase.from('transactions').insert([{
-            type: 'Pengeluaran', unit: 'Wakpro', program: 'Alokasi ke Kas Kuttab',
-            description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: transactionTimestamp
-          }]);
+        // Cek total saldo Wakpro saat ini dari transaksi
+        const { data: allWakproTrx } = await supabase.from('transactions').select('*').eq('unit', 'Wakpro');
+        let currentWakproBal = 0;
+        allWakproTrx?.forEach(t => {
+          if (t.type === 'Pemasukan') currentWakproBal += Number(t.amount);
+          else currentWakproBal -= Number(t.amount);
+        });
+
+        if (numericAmount > currentWakproBal) {
+          setErrorMsg(`Gagal: Saldo Kas Wakpro tidak mencukupi (Sisa: Rp ${currentWakproBal.toLocaleString('id-ID')})!`);
+          setLoading(false);
+          return;
         }
+
+        await supabase.from('transactions').insert([{
+          type: 'Pengeluaran', unit: 'Wakpro', program: 'Alokasi ke Kas Kuttab',
+          description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: transactionTimestamp
+        }]);
       }
     } else {
       finalProgram = masjidSource;
@@ -149,10 +140,6 @@ export default function UnitManagement() {
       setLoading(false);
       return;
     }
-
-    const newBalance = balance + numericAmount;
-    await supabase.from('accounts').update({ balance: newBalance }).eq('name', currentAccountName);
-    setBalance(newBalance);
 
     setLoading(false);
     setAmount('');
@@ -175,7 +162,7 @@ export default function UnitManagement() {
       return;
     }
 
-    if (numericAmount > balance) {
+    if (numericAmount > finalCalculatedBalance) {
       setErrorMsg(`Gagal: Saldo ${displayTitle} tidak mencukupi!`);
       setLoading(false);
       return;
@@ -203,22 +190,11 @@ export default function UnitManagement() {
       return;
     }
 
-    const newBalance = balance - numericAmount;
-    await supabase.from('accounts').update({ balance: newBalance }).eq('name', currentAccountName);
-    setBalance(newBalance);
-
     if (slug === 'wakpro' && wakproCategory === 'Kas Kuttab') {
-      const { data: kuttabAcc } = await supabase.from('accounts').select('*').eq('name', 'Kas Kuttab').limit(1);
-      if (kuttabAcc && kuttabAcc.length > 0) {
-        const kId = kuttabAcc[0].id;
-        const kBal = Number(kuttabAcc[0].balance);
-        const newKuttabBal = kBal + numericAmount;
-        await supabase.from('accounts').update({ balance: newKuttabBal }).eq('id', kId);
-        await supabase.from('transactions').insert([{
-          type: 'Pemasukan', unit: 'Kuttab', program: 'Kas Wakpro',
-          description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount, created_at: transactionTimestamp
-        }]);
-      }
+      await supabase.from('transactions').insert([{
+        type: 'Pemasukan', unit: 'Kuttab', program: 'Kas Wakpro',
+        description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount, created_at: transactionTimestamp
+      }]);
     }
 
     setLoading(false);
@@ -237,10 +213,9 @@ export default function UnitManagement() {
     return { ...t, currentBalance: runningBal };
   });
 
-  // Ambil saldo akhir langsung dari baris terakhir tabel log agar 100% sinkron
   const finalCalculatedBalance = processedTransactions.length > 0 
     ? processedTransactions[processedTransactions.length - 1].currentBalance 
-    : balance;
+    : 0;
 
   const formatRupiah = (angka: number) => {
     return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(angka);
@@ -263,7 +238,6 @@ export default function UnitManagement() {
           </div>
           <div className="mt-4 md:mt-0 bg-white px-6 py-3 rounded-xl shadow-sm border border-gray-200">
             <span className="text-xs text-gray-500 block font-medium">Sisa Saldo Saat Ini:</span>
-            {/* Menggunakan nilai sinkron dari baris terakhir laporan */}
             <span className="text-xl font-extrabold text-emerald-700">Rp {formatRupiah(finalCalculatedBalance)}</span>
           </div>
         </header>
