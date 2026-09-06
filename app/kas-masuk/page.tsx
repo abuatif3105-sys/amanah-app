@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 
 export default function KasMasuk() {
+  const [unit, setUnit] = useState('Masjid');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,11 +30,12 @@ export default function KasMasuk() {
     setSuccessMsg('');
 
     const numericAmount = Number(amount);
+    const accountName = unit === 'Masjid' ? 'Kas Masjid' : 'Kas Kuttab';
 
-    // 1. Masukkan ke tabel transactions
+    // 1. Masukkan ke tabel transactions beserta unit-nya
     const { error: trxError } = await supabase
       .from('transactions')
-      .insert([{ type: 'Pemasukan', description, amount: numericAmount }]);
+      .insert([{ type: 'Pemasukan', unit, description, amount: numericAmount }]);
 
     if (trxError) {
       alert('Gagal menyimpan transaksi: ' + trxError.message);
@@ -41,10 +43,11 @@ export default function KasMasuk() {
       return;
     }
 
-    // 2. Ambil saldo saat ini dari tabel accounts
+    // 2. Ambil saldo akun yang sesuai (Kas Masjid / Kas Kuttab)
     const { data: accData, error: accError } = await supabase
       .from('accounts')
       .select('*')
+      .eq('name', accountName)
       .limit(1);
 
     if (accData && accData.length > 0) {
@@ -52,7 +55,7 @@ export default function KasMasuk() {
       const currentBalance = Number(accData[0].balance);
       const newBalance = currentBalance + numericAmount;
 
-      // Update saldo akun
+      // Update saldo akun tersebut
       await supabase
         .from('accounts')
         .update({ balance: newBalance })
@@ -62,7 +65,7 @@ export default function KasMasuk() {
     setLoading(false);
     setDescription('');
     setAmount('');
-    setSuccessMsg('Alhamdulillah, Kas Masuk berhasil dicatat!');
+    setSuccessMsg(`Alhamdulillah, Kas Masuk untuk ${unit} berhasil dicatat!`);
   };
 
   const handleLogout = async () => {
@@ -97,7 +100,7 @@ export default function KasMasuk() {
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Masuk</h1>
-          <p className="text-gray-500 mt-1">Catat setiap infak, sedekah, atau pemasukan dana ke kas</p>
+          <p className="text-gray-500 mt-1">Catat infak, sedekah, atau pemasukan untuk Masjid atau Kuttab</p>
         </header>
 
         <div className="max-w-xl bg-white p-8 rounded-xl shadow-sm border border-gray-100">
@@ -108,6 +111,18 @@ export default function KasMasuk() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Unit Tujuan</label>
+              <select
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
+              >
+                <option value="Masjid">Kas Masjid</option>
+                <option value="Kuttab">Kas Kuttab</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Sumber Dana</label>
               <input

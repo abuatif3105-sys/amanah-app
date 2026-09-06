@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function LaporanKeuangan() {
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [filterUnit, setFilterUnit] = useState('Semua');
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -34,10 +35,16 @@ export default function LaporanKeuangan() {
     fetchData();
   }, []);
 
+  // Filter transaksi berdasarkan unit yang dipilih
+  const filteredTransactions = transactions.filter((trx) => {
+    if (filterUnit === 'Semua') return true;
+    return (trx.unit || 'Masjid') === filterUnit;
+  });
+
   let totalPemasukan = 0;
   let totalPengeluaran = 0;
 
-  transactions.forEach((trx) => {
+  filteredTransactions.forEach((trx) => {
     if (trx.type === 'Pemasukan') {
       totalPemasukan += Number(trx.amount);
     } else if (trx.type === 'Pengeluaran') {
@@ -86,9 +93,20 @@ export default function LaporanKeuangan() {
         <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Laporan Keuangan</h1>
-            <p className="text-gray-500 mt-1">Rekapitulasi seluruh riwayat transaksi masjid & kuttab</p>
+            <p className="text-gray-500 mt-1">Rekapitulasi riwayat transaksi Masjid & Kuttab Al-Fatih</p>
           </div>
-          <div className="mt-4 md:mt-0">
+          <div className="mt-4 md:mt-0 flex items-center space-x-3">
+            {/* Filter Unit */}
+            <select
+              value={filterUnit}
+              onChange={(e) => setFilterUnit(e.target.value)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Semua">Semua Unit</option>
+              <option value="Masjid">Kas Masjid</option>
+              <option value="Kuttab">Kas Kuttab</option>
+            </select>
+
             <button 
               onClick={() => window.print()} 
               className="px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
@@ -102,7 +120,7 @@ export default function LaporanKeuangan() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm font-medium">Akumulasi Pemasukan</p>
+              <p className="text-gray-500 text-sm font-medium">Akumulasi Pemasukan ({filterUnit})</p>
               <h3 className="text-2xl font-bold text-emerald-600 mt-1">{formatRupiah(totalPemasukan)}</h3>
             </div>
             <div className="p-3 bg-emerald-50 rounded-full text-emerald-600 text-xl">📥</div>
@@ -110,7 +128,7 @@ export default function LaporanKeuangan() {
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm font-medium">Akumulasi Pengeluaran</p>
+              <p className="text-gray-500 text-sm font-medium">Akumulasi Pengeluaran ({filterUnit})</p>
               <h3 className="text-2xl font-bold text-red-600 mt-1">{formatRupiah(totalPengeluaran)}</h3>
             </div>
             <div className="p-3 bg-red-50 rounded-full text-red-600 text-xl">📤</div>
@@ -120,8 +138,8 @@ export default function LaporanKeuangan() {
         {/* Tabel Lengkap Riwayat Transaksi */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Semua Riwayat Transaksi</h3>
-            <span className="text-xs text-gray-400">Total: {transactions.length} catatan</span>
+            <h3 className="font-bold text-gray-800">Riwayat Transaksi ({filterUnit})</h3>
+            <span className="text-xs text-gray-400">Total: {filteredTransactions.length} catatan</span>
           </div>
           
           <div className="overflow-x-auto">
@@ -129,6 +147,7 @@ export default function LaporanKeuangan() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-sm text-gray-500">
                   <th className="p-4 font-medium">Tanggal</th>
+                  <th className="p-4 font-medium">Unit</th>
                   <th className="p-4 font-medium">Keterangan</th>
                   <th className="p-4 font-medium">Jenis</th>
                   <th className="p-4 font-medium text-right">Jumlah</th>
@@ -137,15 +156,20 @@ export default function LaporanKeuangan() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="p-6 text-center text-gray-500 py-12">
+                    <td colSpan={5} className="p-6 text-center text-gray-500 py-12">
                       Memuat laporan...
                     </td>
                   </tr>
-                ) : transactions.length > 0 ? (
-                  transactions.map((trx) => (
+                ) : filteredTransactions.length > 0 ? (
+                  filteredTransactions.map((trx) => (
                     <tr key={trx.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="p-4 text-sm text-gray-600">
                         {new Date(trx.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="p-4 text-sm">
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${trx.unit === 'Kuttab' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {trx.unit || 'Masjid'}
+                        </span>
                       </td>
                       <td className="p-4 text-sm text-gray-800 font-medium">{trx.description}</td>
                       <td className="p-4 text-sm">
@@ -160,8 +184,8 @@ export default function LaporanKeuangan() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="p-6 text-center text-gray-500 py-12">
-                      Belum ada laporan transaksi.
+                    <td colSpan={5} className="p-6 text-center text-gray-500 py-12">
+                      Belum ada laporan transaksi untuk unit ini.
                     </td>
                   </tr>
                 )}

@@ -7,13 +7,12 @@ import { supabase } from '../lib/supabase';
 
 export default function Dashboard() {
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [totalSaldo, setTotalSaldo] = useState(0);
-  const [pemasukanBulanIni, setPemasukanBulanIni] = useState(0);
-  const [pengeluaranBulanIni, setPengeluaranBulanIni] = useState(0);
+  const [saldoMasjid, setSaldoMasjid] = useState(0);
+  const [saldoKuttab, setSaldoKuttab] = useState(0);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Cek apakah sudah login atau belum
+  // Cek apakah sudah login
   useEffect(() => {
     async function checkSession() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -35,17 +34,19 @@ export default function Dashboard() {
       
       if (trxData) setTransactions(trxData);
 
-      // Ambil saldo dari tabel accounts
+      // Ambil saldo dari tabel accounts (Kas Masjid & Kas Kuttab)
       const { data: accData } = await supabase
         .from('accounts')
         .select('*');
 
-      if (accData && accData.length > 0) {
-        let total = 0;
+      if (accData) {
         accData.forEach((acc) => {
-          total += Number(acc.balance);
+          if (acc.name === 'Kas Masjid') {
+            setSaldoMasjid(Number(acc.balance));
+          } else if (acc.name === 'Kas Kuttab') {
+            setSaldoKuttab(Number(acc.balance));
+          }
         });
-        setTotalSaldo(total);
       }
 
       setLoading(false);
@@ -93,26 +94,23 @@ export default function Dashboard() {
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Ringkasan Keuangan Masjid & Kuttab Al-Fatih</p>
+          <p className="text-gray-500 mt-1">Ringkasan Keuangan Terpisah Masjid & Kuttab Al-Fatih</p>
         </header>
 
-        {/* Kartu Ringkasan */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 text-sm font-medium">Total Saldo Saat Ini</p>
-            <h3 className="text-2xl font-bold text-gray-800 mt-1">
-              {loading ? 'Memuat...' : formatRupiah(totalSaldo)}
+        {/* Kartu Ringkasan Saldo Terpisah */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-600">
+            <p className="text-gray-500 text-sm font-medium">Saldo Kas Masjid</p>
+            <h3 className="text-3xl font-bold text-gray-800 mt-2">
+              {loading ? 'Memuat...' : formatRupiah(saldoMasjid)}
             </h3>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 text-sm font-medium">Pemasukan</p>
-            <h3 className="text-2xl font-bold text-emerald-600 mt-1">Sistem Aktif</h3>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 text-sm font-medium">Pengeluaran</p>
-            <h3 className="text-2xl font-bold text-red-600 mt-1">Sistem Aktif</h3>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-600">
+            <p className="text-gray-500 text-sm font-medium">Saldo Kas Kuttab</p>
+            <h3 className="text-3xl font-bold text-gray-800 mt-2">
+              {loading ? 'Memuat...' : formatRupiah(saldoKuttab)}
+            </h3>
           </div>
         </div>
 
@@ -128,6 +126,7 @@ export default function Dashboard() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-sm text-gray-500">
                   <th className="p-4 font-medium">Tanggal</th>
+                  <th className="p-4 font-medium">Unit</th>
                   <th className="p-4 font-medium">Keterangan</th>
                   <th className="p-4 font-medium">Jenis</th>
                   <th className="p-4 font-medium text-right">Jumlah</th>
@@ -136,13 +135,18 @@ export default function Dashboard() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="p-6 text-center text-gray-500">Memuat data...</td>
+                    <td colSpan={5} className="p-6 text-center text-gray-500">Memuat data...</td>
                   </tr>
                 ) : transactions.length > 0 ? (
                   transactions.map((trx) => (
                     <tr key={trx.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="p-4 text-sm text-gray-600">
                         {new Date(trx.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="p-4 text-sm">
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${trx.unit === 'Kuttab' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {trx.unit || 'Masjid'}
+                        </span>
                       </td>
                       <td className="p-4 text-sm text-gray-800 font-medium">{trx.description}</td>
                       <td className="p-4 text-sm">
@@ -157,7 +161,7 @@ export default function Dashboard() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="p-6 text-center text-gray-500">Belum ada transaksi.</td>
+                    <td colSpan={5} className="p-6 text-center text-gray-500">Belum ada transaksi.</td>
                   </tr>
                 )}
               </tbody>

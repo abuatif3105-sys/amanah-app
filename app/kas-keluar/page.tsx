@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 
 export default function KasKeluar() {
+  const [unit, setUnit] = useState('Masjid');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,11 +32,13 @@ export default function KasKeluar() {
     setErrorMsg('');
 
     const numericAmount = Number(amount);
+    const accountName = unit === 'Masjid' ? 'Kas Masjid' : 'Kas Kuttab';
 
-    // 1. Cek saldo saat ini terlebih dahulu
+    // 1. Cek saldo akun yang dipilih terlebih dahulu
     const { data: accData, error: accError } = await supabase
       .from('accounts')
       .select('*')
+      .eq('name', accountName)
       .limit(1);
 
     if (accError || !accData || accData.length === 0) {
@@ -47,17 +50,17 @@ export default function KasKeluar() {
     const currentId = accData[0].id;
     const currentBalance = Number(accData[0].balance);
 
-    // Validasi: Apakah saldo cukup?
+    // Validasi: Apakah saldo unit tersebut cukup?
     if (numericAmount > currentBalance) {
-      setErrorMsg('Gagal: Saldo kas tidak mencukupi untuk pengeluaran ini!');
+      setErrorMsg(`Gagal: Saldo ${accountName} tidak mencukupi untuk pengeluaran ini!`);
       setLoading(false);
       return;
     }
 
-    // 2. Masukkan ke tabel transactions
+    // 2. Masukkan ke tabel transactions beserta unit-nya
     const { error: trxError } = await supabase
       .from('transactions')
-      .insert([{ type: 'Pengeluaran', description, amount: numericAmount }]);
+      .insert([{ type: 'Pengeluaran', unit, description, amount: numericAmount }]);
 
     if (trxError) {
       setErrorMsg('Gagal menyimpan transaksi: ' + trxError.message);
@@ -65,7 +68,7 @@ export default function KasKeluar() {
       return;
     }
 
-    // 3. Kurangi saldo di tabel accounts
+    // 3. Kurangi saldo di tabel accounts yang sesuai
     const newBalance = currentBalance - numericAmount;
     await supabase
       .from('accounts')
@@ -75,7 +78,7 @@ export default function KasKeluar() {
     setLoading(false);
     setDescription('');
     setAmount('');
-    setSuccessMsg('Kas Keluar berhasil dicatat dan saldo terpotong otomatis!');
+    setSuccessMsg(`Kas Keluar untuk ${unit} berhasil dicatat dan saldo terpotong otomatis!`);
   };
 
   const handleLogout = async () => {
@@ -110,7 +113,7 @@ export default function KasKeluar() {
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Keluar</h1>
-          <p className="text-gray-500 mt-1">Catat penggunaan dana untuk operasional masjid atau kuttab</p>
+          <p className="text-gray-500 mt-1">Catat penggunaan dana operasional untuk Masjid atau Kuttab</p>
         </header>
 
         <div className="max-w-xl bg-white p-8 rounded-xl shadow-sm border border-gray-100">
@@ -128,13 +131,25 @@ export default function KasKeluar() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Unit Sumber Dana</label>
+              <select
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
+              >
+                <option value="Masjid">Kas Masjid</option>
+                <option value="Kuttab">Kas Kuttab</option>
+              </select>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan Pengeluaran</label>
               <input
                 type="text"
                 required
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Contoh: Pembayaran Listrik / Belanja Kebersihan"
+                placeholder="Contoh: Pembayaran Listrik / Honor Pengajar"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
               />
             </div>
