@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabase';
 
 export default function KasMasuk() {
   const [unit, setUnit] = useState('Masjid');
+  const [program, setProgram] = useState('Infaq Umum');
+  const [customProgram, setCustomProgram] = useState('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,11 +33,14 @@ export default function KasMasuk() {
 
     const numericAmount = Number(amount);
     const accountName = unit === 'Masjid' ? 'Kas Masjid' : 'Kas Kuttab';
+    
+    // Tentukan nama program (jika pilih 'Lainnya', ambil dari text input kustom)
+    const finalProgram = program === 'Lainnya' ? (customProgram || 'Program Khusus') : program;
 
-    // 1. Masukkan ke tabel transactions beserta unit-nya
+    // 1. Masukkan ke tabel transactions beserta unit dan program-nya
     const { error: trxError } = await supabase
       .from('transactions')
-      .insert([{ type: 'Pemasukan', unit, description, amount: numericAmount }]);
+      .insert([{ type: 'Pemasukan', unit, program: finalProgram, description, amount: numericAmount }]);
 
     if (trxError) {
       alert('Gagal menyimpan transaksi: ' + trxError.message);
@@ -44,7 +49,7 @@ export default function KasMasuk() {
     }
 
     // 2. Ambil saldo akun yang sesuai (Kas Masjid / Kas Kuttab)
-    const { data: accData, error: accError } = await supabase
+    const { data: accData } = await supabase
       .from('accounts')
       .select('*')
       .eq('name', accountName)
@@ -65,7 +70,8 @@ export default function KasMasuk() {
     setLoading(false);
     setDescription('');
     setAmount('');
-    setSuccessMsg(`Alhamdulillah, Kas Masuk untuk ${unit} berhasil dicatat!`);
+    setCustomProgram('');
+    setSuccessMsg(`Alhamdulillah, Kas Masuk untuk ${unit} (${finalProgram}) berhasil dicatat!`);
   };
 
   const handleLogout = async () => {
@@ -99,8 +105,8 @@ export default function KasMasuk() {
       {/* Konten Utama */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Masuk</h1>
-          <p className="text-gray-500 mt-1">Catat infak, sedekah, atau pemasukan untuk Masjid atau Kuttab</p>
+          <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Masuk & Donasi</h1>
+          <p className="text-gray-500 mt-1">Catat infak, sedekah, atau donasi terarah berdasarkan program</p>
         </header>
 
         <div className="max-w-xl bg-white p-8 rounded-xl shadow-sm border border-gray-100">
@@ -112,7 +118,7 @@ export default function KasMasuk() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Unit Tujuan</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Unit Tujuan Kas</label>
               <select
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
@@ -124,13 +130,43 @@ export default function KasMasuk() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Sumber Dana</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Program / Tujuan Donasi</label>
+              <select
+                value={program}
+                onChange={(e) => setProgram(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
+              >
+                <option value="Infaq Umum">Infaq / Operasional Umum</option>
+                <option value="Jumat Berkah">Jumat Berkah</option>
+                <option value="Pembangunan / Renovasi">Pembangunan / Renovasi</option>
+                <option value="Santunan Yatim & Dhuafa">Santunan Yatim & Dhuafa</option>
+                <option value="Beasiswa Santri / Pelajar">Beasiswa Santri / Pelajar</option>
+                <option value="Lainnya">Lainnya (Tulis Sendiri)</option>
+              </select>
+            </div>
+
+            {/* Input kustom jika memilih 'Lainnya' */}
+            {program === 'Lainnya' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Nama Program Lainnya</label>
+                <input
+                  type="text"
+                  required
+                  value={customProgram}
+                  onChange={(e) => setCustomProgram(e.target.value)}
+                  placeholder="Contoh: Wakaf Al-Qur'an / Perbaikan AC"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan / Nama Donatur (Opsional)</label>
               <input
                 type="text"
-                required
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Contoh: Infak Jumat / Donasi Hamba Allah"
+                placeholder="Contoh: Hamba Allah / Bpk. Ahmad"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
               />
             </div>

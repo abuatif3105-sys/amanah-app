@@ -92,8 +92,8 @@ export default function LaporanKeuangan() {
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
         <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Laporan Keuangan</h1>
-            <p className="text-gray-500 mt-1">Rekapitulasi riwayat transaksi Masjid & Kuttab Al-Fatih</p>
+            <h1 className="text-3xl font-bold text-gray-800">Laporan Keuangan & Program</h1>
+            <p className="text-gray-500 mt-1">Rekapitulasi riwayat transaksi berdasarkan unit dan program donasi</p>
           </div>
           <div className="mt-4 md:mt-0 flex items-center space-x-3">
             {/* Filter Unit */}
@@ -138,7 +138,7 @@ export default function LaporanKeuangan() {
         {/* Tabel Lengkap Riwayat Transaksi */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Riwayat Transaksi ({filterUnit})</h3>
+            <h3 className="font-bold text-gray-800">Riwayat Transaksi & Program ({filterUnit})</h3>
             <span className="text-xs text-gray-400">Total: {filteredTransactions.length} catatan</span>
           </div>
           
@@ -148,7 +148,8 @@ export default function LaporanKeuangan() {
                 <tr className="bg-gray-50 border-b border-gray-100 text-sm text-gray-500">
                   <th className="p-4 font-medium">Tanggal</th>
                   <th className="p-4 font-medium">Unit</th>
-                  <th className="p-4 font-medium">Keterangan</th>
+                  <th className="p-4 font-medium">Program / Tujuan</th>
+                  <th className="p-4 font-medium">Keterangan / Donatur</th>
                   <th className="p-4 font-medium">Jenis</th>
                   <th className="p-4 font-medium text-right">Jumlah</th>
                 </tr>
@@ -156,7 +157,7 @@ export default function LaporanKeuangan() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="p-6 text-center text-gray-500 py-12">
+                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">
                       Memuat laporan...
                     </td>
                   </tr>
@@ -171,7 +172,10 @@ export default function LaporanKeuangan() {
                           {trx.unit || 'Masjid'}
                         </span>
                       </td>
-                      <td className="p-4 text-sm text-gray-800 font-medium">{trx.description}</td>
+                      <td className="p-4 text-sm font-semibold text-gray-800">
+                        {trx.program || 'Infaq Umum'}
+                      </td>
+                      <td className="p-4 text-sm text-gray-600">{trx.description || '-'}</td>
                       <td className="p-4 text-sm">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${trx.type === 'Pemasukan' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                           {trx.type}
@@ -184,7 +188,7 @@ export default function LaporanKeuangan() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="p-6 text-center text-gray-500 py-12">
+                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">
                       Belum ada laporan transaksi untuk unit ini.
                     </td>
                   </tr>
