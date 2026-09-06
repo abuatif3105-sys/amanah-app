@@ -1,15 +1,38 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/navigation'; // perbaikan import link
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 
-export default function LaporanKeuangan() {
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [filterUnit, setFilterUnit] = useState('Semua');
-  const [loading, setLoading] = useState(true);
+export default function KasKeluar() {
+  const [unit, setUnit] = useState('Masjid');
+  const [kuttabCategory, setKuttabCategory] = useState('KBM');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const router = useRouter();
+
+  // Daftar kategori pengeluaran khusus Kuttab
+  const kuttabCategories = [
+    'KBM',
+    'KBO',
+    'TU',
+    'ATK',
+    'RAKER',
+    'PERSIAPAN KELAS',
+    'MOKA',
+    'SARANA PRASARANA',
+    'PEMBUKAAN TEMA',
+    'MABIT GURU',
+    'RAPAT',
+    'DAUROH',
+    'PRAMABIT',
+    'KEMAH',
+    'MABIT SANTRI'
+  ];
 
   // Cek apakah sudah login
   useEffect(() => {
@@ -22,42 +45,69 @@ export default function LaporanKeuangan() {
     checkSession();
   }, [router]);
 
-  useEffect(() => {
-    async function fetchData() {
-      const { data } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (data) setTransactions(data);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+
+    const numericAmount = Number(amount);
+    const accountName = unit === 'Masjid' ? 'Kas Masjid' : 'Kas Kuttab';
+
+    // 1. Cek saldo akun yang dipilih terlebih dahulu
+    const { data: accData, error: accError } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('name', accountName)
+      .limit(1);
+
+    if (accError || !accData || accData.length === 0) {
+      setErrorMsg('Gagal memeriksa data saldo akun.');
       setLoading(false);
+      return;
     }
-    fetchData();
-  }, []);
 
-  // Filter transaksi berdasarkan unit yang dipilih
-  const filteredTransactions = transactions.filter((trx) => {
-    if (filterUnit === 'Semua') return true;
-    return (trx.unit || 'Masjid') === filterUnit;
-  });
+    const currentId = accData[0].id;
+    const currentBalance = Number(accData[0].balance);
 
-  let totalPemasukan = 0;
-  let totalPengeluaran = 0;
-
-  filteredTransactions.forEach((trx) => {
-    if (trx.type === 'Pemasukan') {
-      totalPemasukan += Number(trx.amount);
-    } else if (trx.type === 'Pengeluaran') {
-      totalPengeluaran += Number(trx.amount);
+    // Validasi: Apakah saldo unit tersebut cukup?
+    if (numericAmount > currentBalance) {
+      setErrorMsg(`Gagal: Saldo ${accountName} tidak mencukupi untuk pengeluaran ini!`);
+      setLoading(false);
+      return;
     }
-  });
 
-  const formatRupiah = (angka: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0
-    }).format(angka);
+    // Tentukan program/kategori pengeluaran (jika Kuttab pakai kategori pilihan, jika Masjid pakai 'Operasional Masjid')
+    const finalProgram = unit === 'Kuttab' ? `Kategori: ${kuttabCategory}` : 'Operasional Masjid';
+
+    // 2. Masukkan ke tabel transactions beserta unit, program, dan keterangan-nya
+    const { error: trxError } = await supabase
+      .from('transactions')
+      .insert([{ 
+        type: 'Pengeluaran', 
+        unit, 
+        program: finalProgram, 
+        description, 
+        amount: numericAmount 
+      }]);
+
+    if (trxError) {
+      setErrorMsg('Gagal menyimpan transaksi: ' + trxError.message);
+      setLoading(false);
+      return;
+    }
+
+    // 3. Kurangi saldo di tabel accounts yang sesuai
+    const newBalance = currentBalance - numericAmount;
+    await supabase
+      .from('accounts')
+      .update({ balance: newBalance })
+      .eq('id', currentId);
+
+    setLoading(false);
+    setDescription('');
+    setAmount('');
+    setSuccessMsg(`Kas Keluar untuk ${unit} berhasil dicatat dan saldo terpotong otomatis!`);
   };
 
   const handleLogout = async () => {
@@ -71,10 +121,10 @@ export default function LaporanKeuangan() {
       <aside className="w-64 bg-emerald-700 text-white flex flex-col hidden md:flex">
         <div className="p-6 text-2xl font-bold border-b border-emerald-600">AMANAH</div>
         <nav className="flex-1 p-4 space-y-2 text-sm">
-          <Link href="/" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Dashboard</Link>
-          <Link href="/kas-masuk" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Masuk</Link>
-          <Link href="/kas-keluar" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Keluar</Link>
-          <Link href="/laporan" className="block p-3 bg-emerald-800 rounded-lg font-medium transition-colors">Laporan</Link>
+          <a href="/" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Dashboard</a>
+          <a href="/kas-masuk" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Kas Masuk</a>
+          <a href="/kas-keluar" className="block p-3 bg-emerald-800 rounded-lg font-medium transition-colors">Kas Keluar</a>
+          <a href="/laporan" className="block p-3 hover:bg-emerald-600 rounded-lg transition-colors">Laporan</a>
         </nav>
         
         {/* Tombol Logout */}
@@ -90,112 +140,85 @@ export default function LaporanKeuangan() {
 
       {/* Konten Utama */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
-        <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">Laporan Keuangan & Program</h1>
-            <p className="text-gray-500 mt-1">Rekapitulasi riwayat transaksi berdasarkan unit dan program donasi</p>
-          </div>
-          <div className="mt-4 md:mt-0 flex items-center space-x-3">
-            {/* Filter Unit */}
-            <select
-              value={filterUnit}
-              onChange={(e) => setFilterUnit(e.target.value)}
-              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="Semua">Semua Unit</option>
-              <option value="Masjid">Kas Masjid</option>
-              <option value="Kuttab">Kas Kuttab</option>
-            </select>
-
-            <button 
-              onClick={() => window.print()} 
-              className="px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
-            >
-              Cetak / Unduh PDF
-            </button>
-          </div>
+        <header className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-800">Pencatatan Kas Keluar</h1>
+          <p className="text-gray-500 mt-1">Catat penggunaan dana operasional Masjid atau Kuttab dengan kategori terperinci</p>
         </header>
 
-        {/* Kartu Ringkasan Laporan */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">Akumulasi Pemasukan ({filterUnit})</p>
-              <h3 className="text-2xl font-bold text-emerald-600 mt-1">{formatRupiah(totalPemasukan)}</h3>
+        <div className="max-w-xl bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+          {successMsg && (
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-sm font-medium">
+              {successMsg}
             </div>
-            <div className="p-3 bg-emerald-50 rounded-full text-emerald-600 text-xl">📥</div>
-          </div>
+          )}
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">Akumulasi Pengeluaran ({filterUnit})</p>
-              <h3 className="text-2xl font-bold text-red-600 mt-1">{formatRupiah(totalPengeluaran)}</h3>
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-lg text-sm font-medium">
+              {errorMsg}
             </div>
-            <div className="p-3 bg-red-50 rounded-full text-red-600 text-xl">📤</div>
-          </div>
-        </div>
+          )}
 
-        {/* Tabel Lengkap Riwayat Transaksi */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800">Riwayat Transaksi & Program ({filterUnit})</h3>
-            <span className="text-xs text-gray-400">Total: {filteredTransactions.length} catatan</span>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-sm text-gray-500">
-                  <th className="p-4 font-medium">Tanggal</th>
-                  <th className="p-4 font-medium">Unit</th>
-                  <th className="p-4 font-medium">Program / Tujuan</th>
-                  <th className="p-4 font-medium">Keterangan / Donatur</th>
-                  <th className="p-4 font-medium">Jenis</th>
-                  <th className="p-4 font-medium text-right">Jumlah</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">
-                      Memuat laporan...
-                    </td>
-                  </tr>
-                ) : filteredTransactions.length > 0 ? (
-                  filteredTransactions.map((trx) => (
-                    <tr key={trx.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="p-4 text-sm text-gray-600">
-                        {new Date(trx.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </td>
-                      <td className="p-4 text-sm">
-                        <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${trx.unit === 'Kuttab' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                          {trx.unit || 'Masjid'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-sm font-semibold text-gray-800">
-                        {trx.program || 'Infaq Umum'}
-                      </td>
-                      <td className="p-4 text-sm text-gray-600">{trx.description || '-'}</td>
-                      <td className="p-4 text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${trx.type === 'Pemasukan' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                          {trx.type}
-                        </span>
-                      </td>
-                      <td className={`p-4 text-sm font-bold text-right ${trx.type === 'Pemasukan' ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {trx.type === 'Pemasukan' ? '+' : '-'} {formatRupiah(trx.amount)}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500 py-12">
-                      Belum ada laporan transaksi untuk unit ini.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Unit Sumber Dana</label>
+              <select
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
+              >
+                <option value="Masjid">Kas Masjid</option>
+                <option value="Kuttab">Kas Kuttab</option>
+              </select>
+            </div>
+
+            {/* Pilihan Kategori Pengeluaran Khusus Kuttab (Hanya muncul jika unit Kuttab dipilih) */}
+            {unit === 'Kuttab' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Kategori Pengeluaran Kuttab</label>
+                <select
+                  value={kuttabCategory}
+                  onChange={(e) => setKuttabCategory(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm bg-white"
+                >
+                  {kuttabCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan Pengeluaran (Catatan Rinci)</label>
+              <textarea
+                required
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Contoh: Pembelian spidol, kertas HVS, dan kebutuhan ATK kelas 1"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Nominal (Rp)</label>
+              <input
+                type="number"
+                required
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Contoh: 150000"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none text-gray-800 text-sm"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors cursor-pointer disabled:bg-red-300 text-sm"
+            >
+              {loading ? 'Menyimpan...' : 'Simpan Kas Keluar'}
+            </button>
+          </form>
         </div>
       </main>
     </div>
