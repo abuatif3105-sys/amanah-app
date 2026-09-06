@@ -5,13 +5,9 @@ import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
 
-export function useIsomorphicLayoutEffect() {
-  return typeof window !== 'undefined' ? useEffect : () => {};
-}
-
 export default function UnitManagement() {
   const params = useParams();
-  const slug = (params?.slug as string) || 'kuttab'; // masjid, kuttab, wakpro
+  const slug = (params?.slug as string) || 'kuttab';
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'masuk' | 'keluar' | 'laporan'>('masuk');
@@ -20,6 +16,10 @@ export default function UnitManagement() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [transactions, setTransactions] = useState<any[]>([]);
+
+  // Tanggal default hari ini (Format YYYY-MM-DD)
+  const todayDate = new Date().toISOString().split('T')[0];
+  const [customDate, setCustomDate] = useState(todayDate);
 
   // State Form Kas Masuk Wakpro
   const [wakproSource, setWakproSource] = useState('Wakpro BETA');
@@ -79,7 +79,6 @@ export default function UnitManagement() {
         return;
       }
 
-      // Ambil Saldo Akun
       const { data: accData } = await supabase
         .from('accounts')
         .select('*')
@@ -90,7 +89,6 @@ export default function UnitManagement() {
         setBalance(Number(accData[0].balance));
       }
 
-      // Ambil Riwayat Transaksi Unit Ini
       const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
       const { data: trxData } = await supabase
         .from('transactions')
@@ -121,13 +119,15 @@ export default function UnitManagement() {
     let finalProgram = 'Infaq Umum';
     let finalDesc = description;
 
+    // Gabungkan tanggal pilihan dengan jam saat ini agar urutan waktu presisi
+    const transactionTimestamp = `${customDate}T12:00:00`;
+
     if (slug === 'wakpro') {
       finalProgram = wakproSource === 'Wakpro Lainnya' ? (customWakpro || 'Wakpro Lainnya') : wakproSource;
       finalDesc = `Donatur/Muhsinin: ${donor || 'Hamba Allah'} - ${description}`;
     } else if (slug === 'kuttab') {
       finalProgram = kuttabSource === 'Kas Wakpro' ? 'Kas Wakpro' : (customKuttabSource || 'Lainnya');
       
-      // Jika Kuttab masuk dari Kas Wakpro, potong saldo Wakpro otomatis
       if (kuttabSource === 'Kas Wakpro') {
         const { data: wakproAcc } = await supabase.from('accounts').select('*').eq('name', 'Kas Wakpro').limit(1);
         if (wakproAcc && wakproAcc.length > 0) {
@@ -141,7 +141,7 @@ export default function UnitManagement() {
           await supabase.from('accounts').update({ balance: wBal - numericAmount }).eq('id', wId);
           await supabase.from('transactions').insert([{
             type: 'Pengeluaran', unit: 'Wakpro', program: 'Alokasi ke Kas Kuttab',
-            description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount
+            description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: transactionTimestamp
           }]);
         }
       }
@@ -149,9 +149,9 @@ export default function UnitManagement() {
       finalProgram = masjidSource;
     }
 
-    // Simpan Kas Masuk
+    // Simpan Kas Masuk dengan tanggal kustom
     const { error } = await supabase.from('transactions').insert([{
-      type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount
+      type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: transactionTimestamp
     }]);
 
     if (error) {
@@ -160,7 +160,6 @@ export default function UnitManagement() {
       return;
     }
 
-    // Tambah Saldo Akun Tujuan
     await supabase.from('accounts').update({ balance: balance + numericAmount }).eq('name', currentAccountName);
 
     setLoading(false);
@@ -192,6 +191,7 @@ export default function UnitManagement() {
     const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
     let finalProgram = masjidCategory;
     let finalDesc = description;
+    const transactionTimestamp = `${customDate}T12:00:00`;
 
     if (slug === 'kuttab') {
       finalProgram = `Kategori: ${kuttabCategory}`;
@@ -200,9 +200,9 @@ export default function UnitManagement() {
       finalDesc = `Penerima: ${receiver} - ${description}`;
     }
 
-    // Simpan Transaksi Keluar
+    // Simpan Transaksi Keluar dengan tanggal kustom
     const { error } = await supabase.from('transactions').insert([{
-      type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount
+      type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: transactionTimestamp
     }]);
 
     if (error) {
@@ -211,10 +211,8 @@ export default function UnitManagement() {
       return;
     }
 
-    // Kurangi Saldo Unit Ini
     await supabase.from('accounts').update({ balance: balance - numericAmount }).eq('name', currentAccountName);
 
-    // KHUSUS WAKPRO KELUAR KE KAS KUTTAB
     if (slug === 'wakpro' && wakproCategory === 'Kas Kuttab') {
       const { data: kuttabAcc } = await supabase.from('accounts').select('*').eq('name', 'Kas Kuttab').limit(1);
       if (kuttabAcc && kuttabAcc.length > 0) {
@@ -223,7 +221,7 @@ export default function UnitManagement() {
         await supabase.from('accounts').update({ balance: kBal + numericAmount }).eq('id', kId);
         await supabase.from('transactions').insert([{
           type: 'Pemasukan', unit: 'Kuttab', program: 'Kas Wakpro',
-          description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount
+          description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount, created_at: transactionTimestamp
         }]);
       }
     }
@@ -235,7 +233,6 @@ export default function UnitManagement() {
     setSuccessMsg(`Kas Keluar ${displayTitle} berhasil dicatat dan saldo terpotong otomatis!`);
   };
 
-  // Hitung Saldo Berjalan (Running Balance) untuk Laporan
   let runningBal = 0;
   const processedTransactions = transactions.map((t) => {
     const amt = Number(t.amount);
@@ -269,24 +266,14 @@ export default function UnitManagement() {
           </div>
         </header>
 
-        {/* Tab Navigasi */}
         <div className="flex space-x-2 border-b border-gray-200 mb-6">
-          <button
-            onClick={() => setActiveTab('masuk')}
-            className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'masuk' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
+          <button onClick={() => setActiveTab('masuk')} className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'masuk' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-gray-500'}`}>
             📥 Pencatatan Kas Masuk
           </button>
-          <button
-            onClick={() => setActiveTab('keluar')}
-            className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'keluar' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
+          <button onClick={() => setActiveTab('keluar')} className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'keluar' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500'}`}>
             📤 Pencatatan Kas Keluar
           </button>
-          <button
-            onClick={() => setActiveTab('laporan')}
-            className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'laporan' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
+          <button onClick={() => setActiveTab('laporan')} className={`py-3 px-6 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${activeTab === 'laporan' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
             📊 Laporan Riwayat & Log
           </button>
         </div>
@@ -294,13 +281,18 @@ export default function UnitManagement() {
         {successMsg && <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg text-sm font-medium">{successMsg}</div>}
         {errorMsg && <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-lg text-sm font-medium">{errorMsg}</div>}
 
-        {/* KONTEN TAB KAS MASUK */}
+        {/* TAB KAS MASUK */}
         {activeTab === 'masuk' && (
           <div className="max-w-xl bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
             <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Masuk {displayTitle}</h3>
             <form onSubmit={handleKasMasuk} className="space-y-5">
               
-              {/* Pilihan Sumber Khusus Wakpro */}
+              {/* Pilihan Tanggal Transaksi */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Transaksi</label>
+                <input type="date" required value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm bg-white" />
+              </div>
+
               {slug === 'wakpro' && (
                 <>
                   <div>
@@ -322,7 +314,6 @@ export default function UnitManagement() {
                 </>
               )}
 
-              {/* Pilihan Sumber Khusus Kuttab */}
               {slug === 'kuttab' && (
                 <>
                   <div>
@@ -341,7 +332,6 @@ export default function UnitManagement() {
                 </>
               )}
 
-              {/* Pilihan Sumber Khusus Masjid */}
               {slug === 'masjid' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Program / Sumber Masuk</label>
@@ -364,20 +354,25 @@ export default function UnitManagement() {
                 <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Contoh: 1000000" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
               </div>
 
-              <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-700 text-white font-medium rounded-lg hover:bg-emerald-800 transition-colors cursor-pointer text-sm">
+              <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-700 text-white font-medium rounded-lg hover:bg-emerald-800 cursor-pointer text-sm">
                 {loading ? 'Menyimpan...' : 'Simpan Kas Masuk'}
               </button>
             </form>
           </div>
         )}
 
-        {/* KONTEN TAB KAS KELUAR */}
+        {/* TAB KAS KELUAR */}
         {activeTab === 'keluar' && (
           <div className="max-w-xl bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
             <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Keluar {displayTitle}</h3>
             <form onSubmit={handleKasKeluar} className="space-y-5">
               
-              {/* Kategori Keluar Wakpro */}
+              {/* Pilihan Tanggal Transaksi */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Transaksi</label>
+                <input type="date" required value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm bg-white" />
+              </div>
+
               {slug === 'wakpro' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Kategori Pengeluaran Wakpro</label>
@@ -388,7 +383,6 @@ export default function UnitManagement() {
                 </div>
               )}
 
-              {/* Kategori Keluar Kuttab */}
               {slug === 'kuttab' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Kategori Pengeluaran Kuttab</label>
@@ -398,7 +392,6 @@ export default function UnitManagement() {
                 </div>
               )}
 
-              {/* Kategori Keluar Masjid */}
               {slug === 'masjid' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Kategori Pengeluaran Masjid</label>
@@ -428,14 +421,14 @@ export default function UnitManagement() {
                 <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Contoh: 150000" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm" />
               </div>
 
-              <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors cursor-pointer text-sm">
+              <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 cursor-pointer text-sm">
                 {loading ? 'Menyimpan...' : 'Simpan Kas Keluar'}
               </button>
             </form>
           </div>
         )}
 
-        {/* KONTEN TAB LAPORAN */}
+        {/* TAB LAPORAN */}
         {activeTab === 'laporan' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
