@@ -96,12 +96,15 @@ export default function UnitManagement() {
 
     if (userData) {
         setUserRole(userData.role);
-        // PROTEKSI: Jika role visitor, KUNCI ke tab laporan
-        if (userData.role === 'visitor') {
-            setActiveTab('laporan');
-        } else if (activeTab === 'laporan') {
+        // Jika rolenya jelas-jelas BUKAN visitor, buka tab kas masuk
+        if (userData.role !== 'visitor' && activeTab === 'laporan') {
             setActiveTab('masuk');
+        } else if (userData.role === 'visitor') {
+            setActiveTab('laporan');
         }
+    } else {
+        // Fallback jika tidak punya role di tabel users (anggap sebagai visitor demi keamanan)
+        setUserRole('visitor');
     }
 
     // 2. Ambil PIN TU
@@ -124,11 +127,14 @@ export default function UnitManagement() {
     loadData();
   }, [slug, router]);
 
+  // VARIABEL PROTEKSI MUTLAK: Hanya true jika user sudah dimuat dan BUKAN visitor
+  const isAuthorized = userRole !== '' && userRole !== 'visitor';
+
   // ==========================================
   // FITUR EDIT & DELETE DENGAN PIN TU
   // ==========================================
   const handleActionClick = (trx: any, action: 'edit' | 'delete') => {
-    if (userRole === 'visitor') return; // Tambahan Proteksi Lapis 2
+    if (!isAuthorized) return; // Proteksi lapis 2
     setSelectedTrx(trx);
     setActionType(action);
     setPinInput('');
@@ -166,7 +172,7 @@ export default function UnitManagement() {
   };
 
   const executeDelete = async (id: string) => {
-    if (userRole === 'visitor') return;
+    if (!isAuthorized) return;
     setLoading(true);
     await supabase.from('transactions').delete().eq('id', id);
     setSuccessMsg('✅ Transaksi berhasil dihapus.');
@@ -175,7 +181,7 @@ export default function UnitManagement() {
 
   const handleUpdateTrx = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (userRole === 'visitor') return;
+    if (!isAuthorized) return;
     setLoading(true);
     
     const safeDate = `${editForm.created_at}T12:00:00`;
@@ -203,7 +209,7 @@ export default function UnitManagement() {
   // ==========================================
   const handleKasMasuk = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (userRole === 'visitor') return; // Proteksi lapis 2 dari eksekusi gelap
+    if (!isAuthorized) return;
     
     setLoading(true); setSuccessMsg(''); setErrorMsg('');
     const numericAmount = Number(amount);
@@ -252,7 +258,7 @@ export default function UnitManagement() {
 
   const handleKasKeluar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (userRole === 'visitor') return; 
+    if (!isAuthorized) return; 
     
     setLoading(true); setSuccessMsg(''); setErrorMsg('');
     const numericAmount = Number(amount);
@@ -334,8 +340,8 @@ export default function UnitManagement() {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Manajemen {displayTitle}</h1>
             <p className="text-gray-500 text-sm mt-1">Akses Login: 
-               <span className={`font-bold uppercase px-2 py-0.5 ml-2 rounded text-xs text-white shadow-sm ${userRole === 'visitor' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
-                   {userRole || 'Memuat...'}
+               <span className={`font-bold uppercase px-2 py-0.5 ml-2 rounded text-xs text-white shadow-sm ${!userRole ? 'bg-gray-400' : userRole === 'visitor' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                   {userRole || 'MEMUAT...'}
                </span>
                {userRole === 'visitor' && <span className="ml-2 text-xs italic text-gray-400">(Hanya lihat Laporan)</span>}
             </p>
@@ -348,10 +354,10 @@ export default function UnitManagement() {
 
         {/* 
             TAB MENU 
-            - HANYA TAMPIL JIKA BUKAN VISITOR
+            - HANYA TAMPIL JIKA isAuthorized BERNILAI TRUE
         */}
         <div className="flex flex-wrap gap-2 border-b border-gray-200 mb-6 pb-2">
-          {userRole !== 'visitor' && (
+          {isAuthorized && (
             <>
               <button onClick={() => setActiveTab('masuk')} className={`py-2 px-4 sm:px-6 font-semibold text-sm rounded-lg transition-colors cursor-pointer ${activeTab === 'masuk' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
                 📥 Kas Masuk
@@ -372,7 +378,7 @@ export default function UnitManagement() {
         {/* =========================================================================
             TAMPILAN KAS MASUK (Sangat Dibatasi) 
         ========================================================================== */}
-        {activeTab === 'masuk' && userRole !== 'visitor' && (
+        {activeTab === 'masuk' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
              <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Masuk {displayTitle}</h3>
              <form onSubmit={handleKasMasuk} className="space-y-4">
@@ -446,7 +452,7 @@ export default function UnitManagement() {
         {/* =========================================================================
             TAMPILAN KAS KELUAR (Sangat Dibatasi)
         ========================================================================== */}
-        {activeTab === 'keluar' && userRole !== 'visitor' && (
+        {activeTab === 'keluar' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
              <h3 className="text-lg font-bold text-gray-800 mb-4">Form Kas Keluar {displayTitle}</h3>
              <form onSubmit={handleKasKeluar} className="space-y-4">
@@ -565,8 +571,8 @@ export default function UnitManagement() {
                       <th className="p-4 font-semibold border-r text-right text-blue-700">Sisa Saldo</th>
                       <th className="p-4 font-semibold border-r">Kategori</th>
                       
-                      {/* KOLOM AKSI: DISINGKIRKAN JIKA VISITOR */}
-                      {userRole !== 'visitor' && (
+                      {/* KOLOM AKSI: HANYA MUNCUL JIKA isAuthorized TRUE */}
+                      {isAuthorized && (
                           <th className="p-4 font-semibold text-center">Tindakan</th>
                       )}
                     </tr>
@@ -589,8 +595,8 @@ export default function UnitManagement() {
                                 </span>
                             </td>
 
-                            {/* TOMBOL AKSI: DISINGKIRKAN JIKA VISITOR */}
-                            {userRole !== 'visitor' && (
+                            {/* TOMBOL AKSI: HANYA MUNCUL JIKA isAuthorized TRUE */}
+                            {isAuthorized && (
                                 <td className="p-3 text-center whitespace-nowrap align-middle">
                                     <button onClick={() => handleActionClick(trx, 'edit')} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-md mx-1 font-semibold text-xs shadow-sm cursor-pointer transition-colors">
                                         Edit
@@ -614,7 +620,7 @@ export default function UnitManagement() {
       {/* =========================================================================
           MODAL: PIN OTORISASI TU
       ========================================================================== */}
-      {pinModalOpen && userRole !== 'visitor' && (
+      {pinModalOpen && isAuthorized && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
            <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
               <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">🔒</div>
@@ -648,7 +654,7 @@ export default function UnitManagement() {
       {/* =========================================================================
           MODAL: FORM EDIT TRANSAKSI
       ========================================================================== */}
-      {editModalOpen && userRole !== 'visitor' && (
+      {editModalOpen && isAuthorized && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-md m-auto">
               <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">✍️ Edit Transaksi</h3>
