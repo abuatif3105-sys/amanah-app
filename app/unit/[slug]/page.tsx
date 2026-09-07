@@ -10,7 +10,6 @@ export default function UnitManagement() {
   const slug = (params?.slug as string) || 'kuttab';
   const router = useRouter();
 
-  // Default awal ke laporan
   const [activeTab, setActiveTab] = useState<'masuk' | 'keluar' | 'laporan'>('laporan');
   const [loading, setLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
@@ -94,17 +93,24 @@ export default function UnitManagement() {
         .eq('email', session.user.email)
         .single();
 
-    if (userData) {
-        setUserRole(userData.role);
-        // Jika rolenya jelas-jelas BUKAN visitor, buka tab kas masuk
-        if (userData.role !== 'visitor' && activeTab === 'laporan') {
-            setActiveTab('masuk');
-        } else if (userData.role === 'visitor') {
-            setActiveTab('laporan');
+    let currentRole = userData?.role;
+
+    // JIKA ROLE KOSONG, KITA TENTUKAN BERDASARKAN EMAILNYA SECARA OTOMATIS:
+    if (!currentRole) {
+        if (session.user.email === 'visitor@kafmedan.com') {
+            currentRole = 'visitor'; // Hanya dia yang visitor
+        } else {
+            currentRole = 'tu'; // Akun lainnya (anti, liza, tu) otomatis dapat akses penuh!
         }
-    } else {
-        // Fallback jika tidak punya role di tabel users (anggap sebagai visitor demi keamanan)
-        setUserRole('visitor');
+    }
+
+    setUserRole(currentRole);
+
+    // Buka tab Form Masuk untuk yang bukan visitor
+    if (currentRole !== 'visitor' && activeTab === 'laporan') {
+        setActiveTab('masuk');
+    } else if (currentRole === 'visitor') {
+        setActiveTab('laporan');
     }
 
     // 2. Ambil PIN TU
@@ -127,14 +133,14 @@ export default function UnitManagement() {
     loadData();
   }, [slug, router]);
 
-  // VARIABEL PROTEKSI MUTLAK: Hanya true jika user sudah dimuat dan BUKAN visitor
+  // VARIABEL PROTEKSI MUTLAK: Hanya true jika role bukan 'visitor'
   const isAuthorized = userRole !== '' && userRole !== 'visitor';
 
   // ==========================================
   // FITUR EDIT & DELETE DENGAN PIN TU
   // ==========================================
   const handleActionClick = (trx: any, action: 'edit' | 'delete') => {
-    if (!isAuthorized) return; // Proteksi lapis 2
+    if (!isAuthorized) return; // Proteksi
     setSelectedTrx(trx);
     setActionType(action);
     setPinInput('');
@@ -254,7 +260,6 @@ export default function UnitManagement() {
     setSuccessMsg(`✅ Kas Masuk ${displayTitle} berhasil dicatat!`);
     loadData();
   };
-
 
   const handleKasKeluar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -376,7 +381,7 @@ export default function UnitManagement() {
         {errorMsg && <div className="mb-6 p-4 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm font-medium">{errorMsg}</div>}
 
         {/* =========================================================================
-            TAMPILAN KAS MASUK (Sangat Dibatasi) 
+            TAMPILAN KAS MASUK 
         ========================================================================== */}
         {activeTab === 'masuk' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -450,7 +455,7 @@ export default function UnitManagement() {
         )}
 
         {/* =========================================================================
-            TAMPILAN KAS KELUAR (Sangat Dibatasi)
+            TAMPILAN KAS KELUAR
         ========================================================================== */}
         {activeTab === 'keluar' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -516,12 +521,11 @@ export default function UnitManagement() {
         )}
 
         {/* =========================================================================
-            TAMPILAN LAPORAN & LOG (Bisa Dilihat Semua Orang)
+            TAMPILAN LAPORAN & LOG
         ========================================================================== */}
         {activeTab === 'laporan' && (
           <div className="space-y-6">
             
-            {/* Filter Laporan */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
               <h3 className="font-bold text-gray-800 mb-4 text-sm sm:text-base">🔍 Filter Laporan</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
@@ -551,7 +555,6 @@ export default function UnitManagement() {
               </div>
             </div>
 
-            {/* Tabel Log */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 sm:p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <h3 className="font-bold text-gray-800">Log Transaksi ({processedTransactions.length} Data)</h3>
