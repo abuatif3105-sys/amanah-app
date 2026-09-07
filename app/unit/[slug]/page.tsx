@@ -10,7 +10,7 @@ export default function UnitManagement() {
   const slug = (params?.slug as string) || 'kuttab';
   const router = useRouter();
 
-  // Jika visitor, otomatis masuk ke tab laporan
+  // Default awal ke laporan
   const [activeTab, setActiveTab] = useState<'masuk' | 'keluar' | 'laporan'>('laporan');
   const [loading, setLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
@@ -21,7 +21,7 @@ export default function UnitManagement() {
   const [userRole, setUserRole] = useState('');
   const [tuPin, setTuPin] = useState('123456');
 
-  // State Keperluan Modal PIN & Edit/Delete
+  // Modal PIN & Edit/Delete
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
@@ -87,7 +87,7 @@ export default function UnitManagement() {
       return;
     }
 
-    // 1. Ambil Role
+    // 1. Ambil Role User
     const { data: userData } = await supabase
         .from('users')
         .select('role')
@@ -96,19 +96,16 @@ export default function UnitManagement() {
 
     if (userData) {
         setUserRole(userData.role);
-        // Jika bukan visitor, arahkan ke tab form Kas Masuk sebagai default awal
-        if (userData.role !== 'visitor' && activeTab === 'laporan') {
+        // PROTEKSI: Jika role visitor, KUNCI ke tab laporan
+        if (userData.role === 'visitor') {
+            setActiveTab('laporan');
+        } else if (activeTab === 'laporan') {
             setActiveTab('masuk');
         }
     }
 
-    // 2. Ambil PIN TU dari Pengaturan
-    const { data: pinData } = await supabase
-        .from('app_settings')
-        .select('setting_value')
-        .eq('setting_key', 'tu_pin')
-        .single();
-        
+    // 2. Ambil PIN TU
+    const { data: pinData } = await supabase.from('app_settings').select('setting_value').eq('setting_key', 'tu_pin').single();
     if (pinData) setTuPin(pinData.setting_value);
 
     // 3. Muat Data Transaksi
@@ -131,16 +128,15 @@ export default function UnitManagement() {
   // FITUR EDIT & DELETE DENGAN PIN TU
   // ==========================================
   const handleActionClick = (trx: any, action: 'edit' | 'delete') => {
+    if (userRole === 'visitor') return; // Tambahan Proteksi Lapis 2
     setSelectedTrx(trx);
     setActionType(action);
     setPinInput('');
     setPinError('');
     
-    // Jika Super Admin, lewati modal PIN
     if (userRole === 'superadmin' || userRole === 'super_admin') {
          proceedAction(trx, action);
     } else {
-         // Jika TU atau peran lain yang berhak edit (Bendahara), tampilkan modal PIN
          setPinModalOpen(true);
     }
   };
@@ -170,6 +166,7 @@ export default function UnitManagement() {
   };
 
   const executeDelete = async (id: string) => {
+    if (userRole === 'visitor') return;
     setLoading(true);
     await supabase.from('transactions').delete().eq('id', id);
     setSuccessMsg('✅ Transaksi berhasil dihapus.');
@@ -178,11 +175,10 @@ export default function UnitManagement() {
 
   const handleUpdateTrx = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (userRole === 'visitor') return;
     setLoading(true);
     
-    // Pakai waktu jam 12 siang agar tidak kena isu zona waktu hari sebelumnya
     const safeDate = `${editForm.created_at}T12:00:00`;
-    
     const { error } = await supabase.from('transactions').update({
       amount: Number(editForm.amount),
       description: editForm.description,
@@ -207,6 +203,8 @@ export default function UnitManagement() {
   // ==========================================
   const handleKasMasuk = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (userRole === 'visitor') return; // Proteksi lapis 2 dari eksekusi gelap
+    
     setLoading(true); setSuccessMsg(''); setErrorMsg('');
     const numericAmount = Number(amount);
     if (numericAmount <= 0) { setErrorMsg('Nominal harus lebih dari 0.'); setLoading(false); return; }
@@ -220,8 +218,6 @@ export default function UnitManagement() {
       finalDesc = `Donatur/Muhsinin: ${donor || 'Hamba Allah'} - ${description}`;
     } else if (slug === 'kuttab') {
       finalProgram = kuttabSource === 'Kas Wakpro' ? 'Kas Wakpro' : (customKuttabSource || 'Lainnya');
-      
-      // Jika dari Kas Wakpro, potong juga saldo Wakpro-nya otomatis
       if (kuttabSource === 'Kas Wakpro') {
         const { data: allWakproTrx } = await supabase.from('transactions').select('*').eq('unit', 'Wakpro');
         let currentWakproBal = 0;
@@ -256,6 +252,8 @@ export default function UnitManagement() {
 
   const handleKasKeluar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (userRole === 'visitor') return; 
+    
     setLoading(true); setSuccessMsg(''); setErrorMsg('');
     const numericAmount = Number(amount);
     if (numericAmount <= 0) { setErrorMsg('Nominal harus lebih dari 0.'); setLoading(false); return; }
@@ -275,7 +273,6 @@ export default function UnitManagement() {
       type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: safeTimestamp
     }]);
 
-    // Jika Wakpro mengeluarkan ke Kas Kuttab, otomatis tambah saldo Kuttab
     if (slug === 'wakpro' && wakproCategory === 'Kas Kuttab') {
       await supabase.from('transactions').insert([{
         type: 'Pemasukan', unit: 'Kuttab', program: 'Kas Wakpro',
@@ -321,10 +318,9 @@ export default function UnitManagement() {
         <div className="text-xl md:text-2xl font-bold tracking-wider">AMANAH</div>
         <nav className="flex flex-col space-y-2 mt-4 text-sm w-full md:w-auto">
           <Link href="/" className="px-3 py-2 md:p-3 hover:bg-emerald-600 rounded-lg transition-colors text-center md:text-left block">
-              ← Dashboard
+              ← Dashboard Utama
           </Link>
           
-          {/* Tombol ke halaman pengaturan PIN khusus admin */}
           {(userRole === 'superadmin' || userRole === 'super_admin') && (
             <Link href="/pengaturan" className="px-3 py-2 md:p-3 bg-emerald-800 hover:bg-emerald-900 rounded-lg transition-colors mt-2 text-center md:text-left block font-medium">
                 ⚙️ Pengaturan PIN
@@ -337,7 +333,12 @@ export default function UnitManagement() {
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Manajemen {displayTitle}</h1>
-            <p className="text-gray-500 text-sm mt-1">Akses Login: <span className="font-bold uppercase px-2 py-0.5 bg-gray-200 rounded text-gray-700">{userRole || 'Memuat...'}</span></p>
+            <p className="text-gray-500 text-sm mt-1">Akses Login: 
+               <span className={`font-bold uppercase px-2 py-0.5 ml-2 rounded text-xs text-white shadow-sm ${userRole === 'visitor' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                   {userRole || 'Memuat...'}
+               </span>
+               {userRole === 'visitor' && <span className="ml-2 text-xs italic text-gray-400">(Hanya lihat Laporan)</span>}
+            </p>
           </div>
           <div className="bg-white px-5 py-3 rounded-xl shadow-sm border border-gray-200 self-start sm:self-auto">
             <span className="text-xs text-gray-500 block font-medium">Sisa Saldo:</span>
@@ -347,20 +348,20 @@ export default function UnitManagement() {
 
         {/* 
             TAB MENU 
-            - Visitor hanya boleh melihat tab "laporan". Tab "masuk" dan "keluar" disembunyikan.
+            - HANYA TAMPIL JIKA BUKAN VISITOR
         */}
         <div className="flex flex-wrap gap-2 border-b border-gray-200 mb-6 pb-2">
           {userRole !== 'visitor' && (
             <>
-              <button onClick={() => setActiveTab('masuk')} className={`py-2 px-4 sm:px-6 font-semibold text-sm rounded-lg transition-colors ${activeTab === 'masuk' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
+              <button onClick={() => setActiveTab('masuk')} className={`py-2 px-4 sm:px-6 font-semibold text-sm rounded-lg transition-colors cursor-pointer ${activeTab === 'masuk' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
                 📥 Kas Masuk
               </button>
-              <button onClick={() => setActiveTab('keluar')} className={`py-2 px-4 sm:px-6 font-semibold text-sm rounded-lg transition-colors ${activeTab === 'keluar' ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
+              <button onClick={() => setActiveTab('keluar')} className={`py-2 px-4 sm:px-6 font-semibold text-sm rounded-lg transition-colors cursor-pointer ${activeTab === 'keluar' ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
                 📤 Kas Keluar
               </button>
             </>
           )}
-          <button onClick={() => setActiveTab('laporan')} className={`py-2 px-4 sm:px-6 font-semibold text-sm rounded-lg transition-colors ${activeTab === 'laporan' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
+          <button onClick={() => setActiveTab('laporan')} className={`py-2 px-4 sm:px-6 font-semibold text-sm rounded-lg transition-colors cursor-pointer ${activeTab === 'laporan' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
             📊 Laporan & Log
           </button>
         </div>
@@ -369,7 +370,7 @@ export default function UnitManagement() {
         {errorMsg && <div className="mb-6 p-4 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm font-medium">{errorMsg}</div>}
 
         {/* =========================================================================
-            TAMPILAN KAS MASUK (Disembunyikan jika visitor) 
+            TAMPILAN KAS MASUK (Sangat Dibatasi) 
         ========================================================================== */}
         {activeTab === 'masuk' && userRole !== 'visitor' && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -435,7 +436,7 @@ export default function UnitManagement() {
                  <input type="number" required placeholder="Misal: 500000" value={amount} onChange={e=>setAmount(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm font-bold bg-gray-50 focus:bg-white focus:ring-2 focus:ring-emerald-500" />
                </div>
 
-               <button type="submit" disabled={loading} className="w-full bg-emerald-700 text-white font-bold py-3.5 rounded-xl hover:bg-emerald-800 transition-colors shadow-sm">
+               <button type="submit" disabled={loading} className="w-full bg-emerald-700 text-white font-bold py-3.5 rounded-xl hover:bg-emerald-800 transition-colors shadow-sm cursor-pointer">
                  {loading ? 'Memproses...' : 'Simpan Kas Masuk'}
                </button>
              </form>
@@ -443,7 +444,7 @@ export default function UnitManagement() {
         )}
 
         {/* =========================================================================
-            TAMPILAN KAS KELUAR (Disembunyikan jika visitor)
+            TAMPILAN KAS KELUAR (Sangat Dibatasi)
         ========================================================================== */}
         {activeTab === 'keluar' && userRole !== 'visitor' && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -501,7 +502,7 @@ export default function UnitManagement() {
                  <input type="number" required placeholder="Misal: 250000" value={amount} onChange={e=>setAmount(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm font-bold bg-gray-50 focus:bg-white focus:ring-2 focus:ring-red-500" />
                </div>
 
-               <button type="submit" disabled={loading} className="w-full bg-red-600 text-white font-bold py-3.5 rounded-xl hover:bg-red-700 transition-colors shadow-sm">
+               <button type="submit" disabled={loading} className="w-full bg-red-600 text-white font-bold py-3.5 rounded-xl hover:bg-red-700 transition-colors shadow-sm cursor-pointer">
                  {loading ? 'Memproses...' : 'Simpan Kas Keluar'}
                </button>
              </form>
@@ -514,7 +515,7 @@ export default function UnitManagement() {
         {activeTab === 'laporan' && (
           <div className="space-y-6">
             
-            {/* Filter */}
+            {/* Filter Laporan */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
               <h3 className="font-bold text-gray-800 mb-4 text-sm sm:text-base">🔍 Filter Laporan</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
@@ -548,7 +549,7 @@ export default function UnitManagement() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 sm:p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <h3 className="font-bold text-gray-800">Log Transaksi ({processedTransactions.length} Data)</h3>
-                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors">
+                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors cursor-pointer shadow-sm">
                   Cetak PDF / Print
                 </button>
               </div>
@@ -564,7 +565,7 @@ export default function UnitManagement() {
                       <th className="p-4 font-semibold border-r text-right text-blue-700">Sisa Saldo</th>
                       <th className="p-4 font-semibold border-r">Kategori</th>
                       
-                      {/* Hanya Munculkan Kolom Aksi Jika BUKAN Visitor */}
+                      {/* KOLOM AKSI: DISINGKIRKAN JIKA VISITOR */}
                       {userRole !== 'visitor' && (
                           <th className="p-4 font-semibold text-center">Tindakan</th>
                       )}
@@ -588,13 +589,13 @@ export default function UnitManagement() {
                                 </span>
                             </td>
 
-                            {/* Tombol Aksi Untuk TU, Bendahara, atau Admin */}
+                            {/* TOMBOL AKSI: DISINGKIRKAN JIKA VISITOR */}
                             {userRole !== 'visitor' && (
                                 <td className="p-3 text-center whitespace-nowrap align-middle">
-                                    <button onClick={() => handleActionClick(trx, 'edit')} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-md mx-1 font-semibold text-xs shadow-sm cursor-pointer">
+                                    <button onClick={() => handleActionClick(trx, 'edit')} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-md mx-1 font-semibold text-xs shadow-sm cursor-pointer transition-colors">
                                         Edit
                                     </button>
-                                    <button onClick={() => handleActionClick(trx, 'delete')} className="px-3 py-1.5 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 rounded-md mx-1 font-semibold text-xs shadow-sm cursor-pointer">
+                                    <button onClick={() => handleActionClick(trx, 'delete')} className="px-3 py-1.5 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 rounded-md mx-1 font-semibold text-xs shadow-sm cursor-pointer transition-colors">
                                         Hapus
                                     </button>
                                 </td>
@@ -613,9 +614,9 @@ export default function UnitManagement() {
       {/* =========================================================================
           MODAL: PIN OTORISASI TU
       ========================================================================== */}
-      {pinModalOpen && (
+      {pinModalOpen && userRole !== 'visitor' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-           <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm transform scale-100 animate-fade-in-up">
+           <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
               <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">🔒</div>
               <h3 className="text-xl font-extrabold text-center text-gray-800 mb-1">Otorisasi TU</h3>
               <p className="text-xs text-center text-gray-500 mb-6 px-4 leading-relaxed">
@@ -627,16 +628,16 @@ export default function UnitManagement() {
                   value={pinInput} 
                   onChange={e=>setPinInput(e.target.value)} 
                   autoFocus
-                  className="w-full border-2 border-gray-200 p-4 rounded-xl mb-2 text-center text-3xl tracking-[0.4em] font-bold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all bg-gray-50" 
+                  className="w-full border-2 border-gray-200 p-4 rounded-xl mb-2 text-center text-3xl tracking-[0.4em] font-bold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 bg-gray-50" 
                   placeholder="••••" 
               />
               {pinError && <p className="text-red-600 text-xs font-bold mt-2 text-center bg-red-50 py-2 rounded-lg">{pinError}</p>}
               
               <div className="flex justify-between gap-3 mt-8">
-                 <button onClick={()=>setPinModalOpen(false)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold text-sm transition-colors cursor-pointer">
+                 <button onClick={()=>setPinModalOpen(false)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold text-sm cursor-pointer">
                      Batal
                  </button>
-                 <button onClick={verifyPinAndProceed} className="w-full py-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 font-bold text-sm shadow-md cursor-pointer transition-colors">
+                 <button onClick={verifyPinAndProceed} className="w-full py-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 font-bold text-sm shadow-md cursor-pointer">
                      Verifikasi
                  </button>
               </div>
@@ -647,7 +648,7 @@ export default function UnitManagement() {
       {/* =========================================================================
           MODAL: FORM EDIT TRANSAKSI
       ========================================================================== */}
-      {editModalOpen && (
+      {editModalOpen && userRole !== 'visitor' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-md m-auto">
               <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">✍️ Edit Transaksi</h3>
@@ -681,10 +682,10 @@ export default function UnitManagement() {
                  </div>
 
                  <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-100">
-                    <button type="button" onClick={()=>setEditModalOpen(false)} className="w-full py-3.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold text-sm transition-colors cursor-pointer">
+                    <button type="button" onClick={()=>setEditModalOpen(false)} className="w-full py-3.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold text-sm cursor-pointer">
                         Batal
                     </button>
-                    <button type="submit" disabled={loading} className="w-full py-3.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold text-sm shadow-md shadow-blue-500/30 transition-all cursor-pointer">
+                    <button type="submit" disabled={loading} className="w-full py-3.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold text-sm shadow-md cursor-pointer">
                         {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
                     </button>
                  </div>
