@@ -86,38 +86,22 @@ export default function UnitManagement() {
       return;
     }
 
-    // 1. Ambil Role User
-    const { data: userData } = await supabase
-        .from('users')
-        .select('role')
-        .eq('email', session.user.email)
-        .single();
+    const { data: userData } = await supabase.from('users').select('role').eq('email', session.user.email).single();
 
     let currentRole = userData?.role;
-
-    // JIKA ROLE KOSONG, KITA TENTUKAN BERDASARKAN EMAILNYA SECARA OTOMATIS:
     if (!currentRole) {
-        if (session.user.email === 'visitor@kafmedan.com') {
-            currentRole = 'visitor'; // Hanya dia yang visitor
-        } else {
-            currentRole = 'tu'; // Akun lainnya (anti, liza, tu) otomatis dapat akses penuh!
-        }
+        if (session.user.email === 'visitor@kafmedan.com') currentRole = 'visitor';
+        else currentRole = 'tu'; 
     }
 
     setUserRole(currentRole);
 
-    // Buka tab Form Masuk untuk yang bukan visitor
-    if (currentRole !== 'visitor' && activeTab === 'laporan') {
-        setActiveTab('masuk');
-    } else if (currentRole === 'visitor') {
-        setActiveTab('laporan');
-    }
+    if (currentRole !== 'visitor' && activeTab === 'laporan') setActiveTab('masuk');
+    else if (currentRole === 'visitor') setActiveTab('laporan');
 
-    // 2. Ambil PIN TU
     const { data: pinData } = await supabase.from('app_settings').select('setting_value').eq('setting_key', 'tu_pin').single();
     if (pinData) setTuPin(pinData.setting_value);
 
-    // 3. Muat Data Transaksi
     const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
     const { data: trxData } = await supabase
       .from('transactions')
@@ -133,14 +117,13 @@ export default function UnitManagement() {
     loadData();
   }, [slug, router]);
 
-  // VARIABEL PROTEKSI MUTLAK: Hanya true jika role bukan 'visitor'
   const isAuthorized = userRole !== '' && userRole !== 'visitor';
 
   // ==========================================
   // FITUR EDIT & DELETE DENGAN PIN TU
   // ==========================================
   const handleActionClick = (trx: any, action: 'edit' | 'delete') => {
-    if (!isAuthorized) return; // Proteksi
+    if (!isAuthorized) return; 
     setSelectedTrx(trx);
     setActionType(action);
     setPinInput('');
@@ -208,7 +191,6 @@ export default function UnitManagement() {
       setLoading(false);
     }
   };
-
 
   // ==========================================
   // FITUR SUBMIT KAS MASUK & KELUAR
@@ -320,8 +302,47 @@ export default function UnitManagement() {
   });
 
   const finalCalculatedBalance = processedTransactions.length > 0 ? processedTransactions[processedTransactions.length - 1].currentBalance : 0;
-  
   const formatRupiah = (angka: number) => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(angka);
+
+  // ==========================================
+  // LOGIKA DIAGRAM PIE
+  // ==========================================
+  const pemasukanList = filteredTransactions.filter(t => t.type === 'Pemasukan');
+  const pengeluaranList = filteredTransactions.filter(t => t.type === 'Pengeluaran');
+  const totalIn = pemasukanList.reduce((acc, t) => acc + Number(t.amount), 0);
+  const totalOut = pengeluaranList.reduce((acc, t) => acc + Number(t.amount), 0);
+
+  const groupByCategory = (list: any[]) => {
+    const map: { [key: string]: number } = {};
+    list.forEach(t => {
+      const cat = t.program || 'Lainnya';
+      map[cat] = (map[cat] || 0) + Number(t.amount);
+    });
+    return map;
+  };
+
+  const inCategoryTotals = groupByCategory(pemasukanList);
+  const outCategoryTotals = groupByCategory(pengeluaranList);
+
+  const chartColors = [
+    '#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', 
+    '#06B6D4', '#F97316', '#EC4899', '#84CC16', '#14B8A6',
+    '#6366F1', '#F43F5E', '#10B981', '#EAB308', '#A855F7'
+  ];
+
+  const generateConicGradient = (data: { [key: string]: number }, total: number) => {
+    if (total === 0) return '#f3f4f6'; // Warna abu-abu jika kosong
+    let cumulativePercent = 0;
+    const segments = Object.entries(data).map(([cat, amount], idx) => {
+      const percent = (amount / total) * 100;
+      const color = chartColors[idx % chartColors.length];
+      const segment = `${color} ${cumulativePercent}% ${cumulativePercent + percent}%`;
+      cumulativePercent += percent;
+      return segment;
+    });
+    return `conic-gradient(${segments.join(', ')})`;
+  };
+
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
@@ -357,10 +378,7 @@ export default function UnitManagement() {
           </div>
         </header>
 
-        {/* 
-            TAB MENU 
-            - HANYA TAMPIL JIKA isAuthorized BERNILAI TRUE
-        */}
+        {/* TAB MENU */}
         <div className="flex flex-wrap gap-2 border-b border-gray-200 mb-6 pb-2">
           {isAuthorized && (
             <>
@@ -381,7 +399,7 @@ export default function UnitManagement() {
         {errorMsg && <div className="mb-6 p-4 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm font-medium">{errorMsg}</div>}
 
         {/* =========================================================================
-            TAMPILAN KAS MASUK 
+            TAMPILAN KAS MASUK (Sangat Dibatasi) 
         ========================================================================== */}
         {activeTab === 'masuk' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -455,7 +473,7 @@ export default function UnitManagement() {
         )}
 
         {/* =========================================================================
-            TAMPILAN KAS KELUAR
+            TAMPILAN KAS KELUAR (Sangat Dibatasi)
         ========================================================================== */}
         {activeTab === 'keluar' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -521,11 +539,12 @@ export default function UnitManagement() {
         )}
 
         {/* =========================================================================
-            TAMPILAN LAPORAN & LOG
+            TAMPILAN LAPORAN & LOG & DIAGRAM PIE
         ========================================================================== */}
         {activeTab === 'laporan' && (
           <div className="space-y-6">
             
+            {/* Filter Laporan */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
               <h3 className="font-bold text-gray-800 mb-4 text-sm sm:text-base">🔍 Filter Laporan</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
@@ -555,6 +574,76 @@ export default function UnitManagement() {
               </div>
             </div>
 
+            {/* DIAGRAM PIE / CHART */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Pie Chart Pemasukan */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row items-center gap-6">
+                 <div 
+                    className="w-32 h-32 rounded-full shrink-0 shadow-inner border border-gray-100" 
+                    style={{ background: generateConicGradient(inCategoryTotals, totalIn) }}>
+                 </div>
+                 <div className="w-full">
+                    <h4 className="font-bold text-gray-800 mb-1">Grafik Pemasukan</h4>
+                    <p className="text-xs text-gray-500 mb-3 border-b pb-2">Total: <span className="font-bold text-emerald-600">Rp {formatRupiah(totalIn)}</span></p>
+                    <div className="space-y-2 max-h-36 overflow-y-auto pr-2 custom-scrollbar">
+                       {Object.keys(inCategoryTotals).length === 0 ? (
+                           <p className="text-xs text-gray-400 italic">Belum ada data pemasukan.</p>
+                       ) : Object.entries(inCategoryTotals).map(([cat, amount], idx) => {
+                           const pct = totalIn > 0 ? ((amount / totalIn) * 100).toFixed(1) : 0;
+                           const color = chartColors[idx % chartColors.length];
+                           return (
+                             <div key={cat} className="flex justify-between items-center text-xs bg-gray-50 p-1.5 rounded-md border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }}></span>
+                                   <span className="text-gray-700 font-medium truncate max-w-[100px] sm:max-w-[130px]" title={cat}>{cat}</span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                   <span className="font-bold text-gray-900 mr-1">Rp {formatRupiah(amount)}</span>
+                                   <span className="text-gray-500">({pct}%)</span>
+                                </div>
+                             </div>
+                           )
+                       })}
+                    </div>
+                 </div>
+              </div>
+
+              {/* Pie Chart Pengeluaran */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row items-center gap-6">
+                 <div 
+                    className="w-32 h-32 rounded-full shrink-0 shadow-inner border border-gray-100" 
+                    style={{ background: generateConicGradient(outCategoryTotals, totalOut) }}>
+                 </div>
+                 <div className="w-full">
+                    <h4 className="font-bold text-gray-800 mb-1">Grafik Pengeluaran</h4>
+                    <p className="text-xs text-gray-500 mb-3 border-b pb-2">Total: <span className="font-bold text-red-600">Rp {formatRupiah(totalOut)}</span></p>
+                    <div className="space-y-2 max-h-36 overflow-y-auto pr-2 custom-scrollbar">
+                       {Object.keys(outCategoryTotals).length === 0 ? (
+                           <p className="text-xs text-gray-400 italic">Belum ada data pengeluaran.</p>
+                       ) : Object.entries(outCategoryTotals).map(([cat, amount], idx) => {
+                           const pct = totalOut > 0 ? ((amount / totalOut) * 100).toFixed(1) : 0;
+                           const color = chartColors[idx % chartColors.length];
+                           return (
+                             <div key={cat} className="flex justify-between items-center text-xs bg-gray-50 p-1.5 rounded-md border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }}></span>
+                                   <span className="text-gray-700 font-medium truncate max-w-[100px] sm:max-w-[130px]" title={cat}>{cat}</span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                   <span className="font-bold text-gray-900 mr-1">Rp {formatRupiah(amount)}</span>
+                                   <span className="text-gray-500">({pct}%)</span>
+                                </div>
+                             </div>
+                           )
+                       })}
+                    </div>
+                 </div>
+              </div>
+
+            </div>
+
+            {/* Tabel Log */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 sm:p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <h3 className="font-bold text-gray-800">Log Transaksi ({processedTransactions.length} Data)</h3>
