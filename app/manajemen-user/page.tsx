@@ -15,6 +15,7 @@ export default function ManajemenUser() {
   const [editId, setEditId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ 
     email: '', 
+    full_name: '',
     role: 'PENGURUS', 
     allowed_units: ['Masjid', 'Kuttab', 'Wakpro', 'Bilistiwa'] 
   });
@@ -55,6 +56,7 @@ export default function ManajemenUser() {
     setMsg('Menyimpan data...');
     
     if (editId) {
+      // Update akses user yang sudah ada
       const { error } = await supabase.from('users').update({ 
         role: formData.role, 
         allowed_units: formData.allowed_units 
@@ -68,7 +70,13 @@ export default function ManajemenUser() {
         setMsg('Gagal: ' + error.message);
       }
     } else {
+      // Tambah user baru: sertakan id acak dan full_name agar tidak ditolak constraint database
+      const generatedId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'usr_' + Date.now();
+      const defaultName = formData.full_name || formData.email.split('@')[0];
+
       const { error } = await supabase.from('users').insert([{ 
+        id: generatedId,
+        full_name: defaultName,
         email: formData.email, 
         role: formData.role, 
         allowed_units: formData.allowed_units 
@@ -90,6 +98,7 @@ export default function ManajemenUser() {
       setEditId(u.id);
       setFormData({ 
         email: u.email, 
+        full_name: u.full_name || '',
         role: u.role || 'PENGURUS', 
         allowed_units: u.allowed_units || allUnits 
       });
@@ -97,6 +106,7 @@ export default function ManajemenUser() {
       setEditId(null);
       setFormData({ 
         email: '', 
+        full_name: '',
         role: 'PENGURUS', 
         allowed_units: allUnits 
       });
@@ -133,7 +143,7 @@ export default function ManajemenUser() {
             </thead>
             <tbody>
               {users.map(u => (
-                <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <tr key={u.id || u.email} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="p-4 font-semibold text-gray-800">{u.email}</td>
                   <td className="p-4">
                     <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase ${u.role === 'VIEWER' || u.role === 'visitor' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
@@ -175,9 +185,22 @@ export default function ManajemenUser() {
                   value={formData.email} 
                   onChange={e => setFormData({ ...formData, email: e.target.value })} 
                   className="w-full border p-3 rounded-xl bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" 
-                  placeholder="nama@kafmedan.com" 
+                  placeholder="pakde@kafmedan.com" 
                 />
               </div>
+
+              {!editId && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Nama Pengguna (Opsional)</label>
+                  <input 
+                    type="text" 
+                    value={formData.full_name} 
+                    onChange={e => setFormData({ ...formData, full_name: e.target.value })} 
+                    className="w-full border p-3 rounded-xl bg-gray-50 text-sm focus:bg-white outline-none" 
+                    placeholder="Contoh: Pakde" 
+                  />
+                </div>
+              )}
               
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Peran / Jabatan</label>
