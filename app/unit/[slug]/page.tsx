@@ -100,15 +100,25 @@ export default function UnitManagement() {
     const userEmail = session.user.email || '';
     setCurrentUserEmail(userEmail); // Simpan email ke state untuk pencatatan
 
-    // PROTEKSI EKSTRA: Jika Pakde mencoba masuk ke URL Kuttab/Wakpro secara paksa, tendang ke Dashboard!
-    if (userEmail === 'pakde@kafmedan.com' && (slug === 'kuttab' || slug === 'wakpro')) {
+    // Identifikasi Unit Database
+    let unitLabel = 'Kuttab';
+    if (slug === 'masjid') unitLabel = 'Masjid';
+    else if (slug === 'wakpro') unitLabel = 'Wakpro';
+    else if (slug === 'bilistiwa') unitLabel = 'Bilistiwa';
+
+    // Cek Hak Akses Unit dari Database
+    const { data: userData } = await supabase.from('users').select('role, allowed_units').eq('email', userEmail).single();
+    
+    let currentRole = userData?.role;
+    let userAllowedUnits = userData?.allowed_units || ['Masjid', 'Kuttab', 'Wakpro', 'Bilistiwa']; // Default
+
+    // PROTEKSI MUTLAK: Jika unit ini tidak ada di daftar izin user (tidak dicentang liza), tendang ke Dashboard!
+    if (!userAllowedUnits.includes(unitLabel)) {
        router.push('/');
        return;
     }
 
-    const { data: userData } = await supabase.from('users').select('role').eq('email', userEmail).single();
-
-    let currentRole = userData?.role;
+    // Penentuan role default jika belum diatur di database
     if (!currentRole) {
         if (userEmail === 'visitor@kafmedan.com') currentRole = 'visitor';
         else if (userEmail === 'pakde@kafmedan.com') currentRole = 'pakde';
@@ -122,12 +132,6 @@ export default function UnitManagement() {
 
     const { data: pinData } = await supabase.from('app_settings').select('setting_value').eq('setting_key', 'tu_pin').single();
     if (pinData) setTuPin(pinData.setting_value);
-
-    // Identifikasi Unit Database
-    let unitLabel = 'Kuttab';
-    if (slug === 'masjid') unitLabel = 'Masjid';
-    else if (slug === 'wakpro') unitLabel = 'Wakpro';
-    else if (slug === 'bilistiwa') unitLabel = 'Bilistiwa';
 
     const { data: trxData } = await supabase
       .from('transactions')
@@ -754,7 +758,7 @@ export default function UnitManagement() {
                       <th className="p-4 font-semibold border-r text-right text-red-700">Pengeluaran</th>
                       <th className="p-4 font-semibold border-r text-right text-blue-700">Sisa Saldo</th>
                       <th className="p-4 font-semibold border-r">Kategori</th>
-                      {/* KOLOM BARU: PENCATAT */}
+                      {/* KOLOM PENCATAT */}
                       <th className="p-4 font-semibold border-r">Pencatat</th>
                       
                       {isAuthorized && (
@@ -779,7 +783,7 @@ export default function UnitManagement() {
                                     {trx.program || '-'}
                                 </span>
                             </td>
-                            {/* DATA PENCATAT MUNCUL DI SINI */}
+                            {/* DATA PENCATAT */}
                             <td className="p-4 border-r text-xs text-gray-400 font-medium truncate max-w-[120px]" title={trx.created_by || 'Sistem'}>
                                 {trx.created_by ? trx.created_by.split('@')[0] : 'Sistem'}
                             </td>
