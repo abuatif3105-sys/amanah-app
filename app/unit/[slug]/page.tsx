@@ -287,6 +287,7 @@ export default function UnitManagement() {
       }
     
     } else {
+      // Menggunakan kategori pilihan untuk Masjid
       finalProgram = masjidSource;
     }
 
@@ -528,9 +529,12 @@ export default function UnitManagement() {
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Kategori Infaq</label>
                     <select value={masjidSource} onChange={e=>setMasjidSource(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-gray-50">
                        <option value="Infaq Umum">Infaq Umum</option>
-                       <option value="Jumat Berkah">Jumat Berkah</option>
-                       <option value="Wakaf Tunai">Wakaf Tunai</option>
-                       <option value="Lainnya">Lainnya</option>
+                       <option value="Infaq Masjid">Infaq Masjid</option>
+                       <option value="Wakaf">Wakaf</option>
+                       <option value="Zakat">Zakat</option>
+                       <option value="Gaji Marbot">Gaji Marbot</option>
+                       <option value="Teras Masjid">Teras Masjid</option>
+                       <option value="Pembangunan Masjid">Pembangunan Masjid</option>
                     </select>
                  </div>
                )}
