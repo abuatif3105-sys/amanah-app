@@ -6,147 +6,161 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
 export default function Dashboard() {
-  const [userEmail, setUserEmail] = useState('');
-  const [saldoMasjid, setSaldoMasjid] = useState(0);
-  const [saldoKuttab, setSaldoKuttab] = useState(0);
-  const [saldoWakpro, setSaldoWakpro] = useState(0);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState('');
+  
+  // Menyiapkan 4 penampung saldo
+  const [balances, setBalances] = useState({
+    masjid: 0,
+    kuttab: 0,
+    wakpro: 0,
+    bilistiwa: 0, 
+  });
 
   useEffect(() => {
-    async function checkSession() {
+    const checkUserAndFetchData = async () => {
+      // Cek apakah user sudah login
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         router.push('/login');
-      } else {
-        setUserEmail(session.user.email || '');
+        return;
       }
-    }
-    checkSession();
-  }, [router]);
+      setUserEmail(session.user.email || '');
 
-  useEffect(() => {
-    async function fetchBalances() {
-      const { data: trxData } = await supabase
+      // Ambil seluruh transaksi sekaligus untuk menghitung saldo di Dashboard
+      const { data: trxData, error } = await supabase
         .from('transactions')
-        .select('*');
+        .select('unit, type, amount');
 
-      let mTotal = 0;
-      let kTotal = 0;
-      let wTotal = 0;
-
-      if (trxData) {
-        trxData.forEach((trx) => {
-          const amt = Number(trx.amount);
-          const unit = trx.unit;
-          const type = trx.type;
-
-          if (unit === 'Masjid') {
-            if (type === 'Pemasukan') mTotal += amt;
-            else mTotal -= amt;
-          } else if (unit === 'Kuttab') {
-            if (type === 'Pemasukan') kTotal += amt;
-            else kTotal -= amt;
-          } else if (unit === 'Wakpro') {
-            if (type === 'Pemasukan') wTotal += amt;
-            else wTotal -= amt;
+      if (!error && trxData) {
+        let mBal = 0, kBal = 0, wBal = 0, bBal = 0;
+        
+        trxData.forEach(t => {
+          const amt = Number(t.amount);
+          if (t.unit === 'Masjid') {
+            t.type === 'Pemasukan' ? mBal += amt : mBal -= amt;
+          } else if (t.unit === 'Kuttab') {
+            t.type === 'Pemasukan' ? kBal += amt : kBal -= amt;
+          } else if (t.unit === 'Wakpro') {
+            t.type === 'Pemasukan' ? wBal += amt : wBal -= amt;
+          } else if (t.unit === 'Bilistiwa') {
+            t.type === 'Pemasukan' ? bBal += amt : bBal -= amt;
           }
         });
+        
+        // Simpan hasil perhitungan ke state
+        setBalances({ masjid: mBal, kuttab: kBal, wakpro: wBal, bilistiwa: bBal });
       }
-
-      setSaldoMasjid(mTotal);
-      setSaldoKuttab(kTotal);
-      setSaldoWakpro(wTotal);
       setLoading(false);
-    }
-    fetchBalances();
-  }, []);
+    };
 
-  const formatRupiah = (angka: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      maximumFractionDigits: 0
-    }).format(angka);
-  };
+    checkUserAndFetchData();
+  }, [router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
   };
 
-  const isKuttabOnly = userEmail === 'tu@kafmedan.com';
+  const formatRupiah = (angka: number) => {
+    return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(angka);
+  };
+
+  if (loading) {
+      return (
+          <div className="flex min-h-screen items-center justify-center font-bold text-emerald-700 bg-gray-50">
+              Memuat Dashboard...
+          </div>
+      );
+  }
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
-      {/* Sidebar Responsif */}
-      <aside className="w-full md:w-64 bg-emerald-700 text-white flex flex-row md:flex-col justify-between items-center md:items-stretch p-4 md:p-6 shadow-md">
-        <div className="text-xl md:text-2xl font-bold tracking-wider">AMANAH</div>
-        <div className="flex md:flex-col items-center gap-2">
-          <span className="hidden md:block text-xs text-emerald-200 truncate max-w-[200px]" title={userEmail}>{userEmail}</span>
-          <button onClick={handleLogout} className="py-1.5 px-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer text-center">
+      {/* Sidebar Hijau */}
+      <aside className="w-full md:w-64 bg-emerald-700 text-white flex flex-col justify-between p-6 shadow-md">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-widest mb-8">AMANAH</h1>
+        </div>
+        <div className="mt-10 md:mt-0 border-t border-emerald-600 pt-4">
+          <p className="text-xs mb-3 truncate opacity-80" title={userEmail}>{userEmail}</p>
+          <button 
+              onClick={handleLogout} 
+              className="w-full px-4 py-2 bg-emerald-800 hover:bg-emerald-900 rounded-lg text-sm font-bold transition-colors cursor-pointer text-left"
+          >
             Keluar
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 p-4 sm:p-6 md:p-10 overflow-y-auto w-full max-w-full">
-        <header className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Dashboard Keuangan Terpadu</h1>
-          <p className="text-gray-500 text-xs sm:text-sm mt-1">Silakan pilih salah satu kartu unit di bawah ini untuk mengelola pencatatan.</p>
+      {/* Konten Utama */}
+      <main className="flex-1 p-6 md:p-10">
+        <header className="mb-8 border-b border-gray-200 pb-6">
+          <h2 className="text-3xl font-bold text-gray-800">Dashboard Keuangan Terpadu</h2>
+          <p className="text-gray-500 mt-2">Silakan pilih salah satu kartu unit di bawah ini untuk mengelola pencatatan.</p>
         </header>
 
-        {/* 3 Tombol Kartu Saldo Utama (Grid Responsif) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+        {/* 
+            Grid disesuaikan menjadi 4 kolom di layar besar (xl:grid-cols-4), 
+            atau 2 kolom di layar menengah, dan 1 kolom di HP 
+        */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           
-          {!isKuttabOnly && (
-            <div 
-              onClick={() => router.push('/unit/masjid')}
-              className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 border-l-8 border-l-emerald-600 hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md">Unit Masjid</span>
-                <span className="text-gray-400 group-hover:translate-x-1 transition-transform">→</span>
-              </div>
-              <p className="text-gray-500 text-xs sm:text-sm font-medium">Saldo Kas Masjid</p>
-              <h3 className="text-xl sm:text-2xl font-extrabold text-gray-800 mt-1">
-                {loading ? 'Memuat...' : formatRupiah(saldoMasjid)}
+          {/* Kartu 1: Masjid */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
+            <div>
+              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Masjid</span>
+              <p className="text-gray-500 text-sm mt-4 font-medium">Saldo Kas Masjid</p>
+              <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.masjid)}`}>
+                  Rp {formatRupiah(balances.masjid)}
               </h3>
-              <p className="text-xs text-emerald-700 mt-3 font-medium">Kelola Kas & Laporan Masjid</p>
             </div>
-          )}
-
-          <div 
-            onClick={() => router.push('/unit/kuttab')}
-            className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 border-l-8 border-l-blue-600 hover:shadow-md transition-all cursor-pointer group"
-          >
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">Unit Kuttab</span>
-              <span className="text-gray-400 group-hover:translate-x-1 transition-transform">→</span>
-            </div>
-            <p className="text-gray-500 text-xs sm:text-sm font-medium">Saldo Kas Kuttab</p>
-            <h3 className="text-xl sm:text-2xl font-extrabold text-gray-800 mt-1">
-              {loading ? 'Memuat...' : formatRupiah(saldoKuttab)}
-            </h3>
-            <p className="text-xs text-blue-700 mt-3 font-medium">Kelola Kas & Laporan Kuttab</p>
+            <Link href="/unit/masjid" className="mt-8 text-emerald-600 font-bold text-sm flex items-center justify-between group-hover:text-emerald-700">
+              Kelola Kas & Laporan <span>→</span>
+            </Link>
           </div>
 
-          {!isKuttabOnly && (
-            <div 
-              onClick={() => router.push('/unit/wakpro')}
-              className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 border-l-8 border-l-amber-500 hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md">Unit Wakpro</span>
-                <span className="text-gray-400 group-hover:translate-x-1 transition-transform">→</span>
-              </div>
-              <p className="text-gray-500 text-xs sm:text-sm font-medium">Saldo Kas Wakpro</p>
-              <h3 className="text-xl sm:text-2xl font-extrabold text-gray-800 mt-1">
-                {loading ? 'Memuat...' : formatRupiah(saldoWakpro)}
+          {/* Kartu 2: Kuttab */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
+            <div>
+              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Kuttab</span>
+              <p className="text-gray-500 text-sm mt-4 font-medium">Saldo Kas Kuttab</p>
+              <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.kuttab)}`}>
+                  Rp {formatRupiah(balances.kuttab)}
               </h3>
-              <p className="text-xs text-amber-700 mt-3 font-medium">Kelola Kas & Laporan Wakpro</p>
             </div>
-          )}
+            <Link href="/unit/kuttab" className="mt-8 text-blue-600 font-bold text-sm flex items-center justify-between group-hover:text-blue-700">
+              Kelola Kas & Laporan <span>→</span>
+            </Link>
+          </div>
+
+          {/* Kartu 3: Wakpro */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
+            <div>
+              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Wakpro</span>
+              <p className="text-gray-500 text-sm mt-4 font-medium">Saldo Kas Wakpro</p>
+              <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.wakpro)}`}>
+                  Rp {formatRupiah(balances.wakpro)}
+              </h3>
+            </div>
+            <Link href="/unit/wakpro" className="mt-8 text-amber-600 font-bold text-sm flex items-center justify-between group-hover:text-amber-700">
+              Kelola Kas & Laporan <span>→</span>
+            </Link>
+          </div>
+
+          {/* Kartu 4: Bilistiwa (BARU) */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-purple-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
+            <div>
+              <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Bilistiwa</span>
+              <p className="text-gray-500 text-sm mt-4 font-medium">Kas Operasional</p>
+              <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.bilistiwa)}`}>
+                  Rp {formatRupiah(balances.bilistiwa)}
+              </h3>
+            </div>
+            <Link href="/unit/bilistiwa" className="mt-8 text-purple-600 font-bold text-sm flex items-center justify-between group-hover:text-purple-700">
+              Kelola Kas & Laporan <span>→</span>
+            </Link>
+          </div>
 
         </div>
       </main>
