@@ -18,6 +18,7 @@ export default function UnitManagement() {
 
   // State Auth & Role
   const [userRole, setUserRole] = useState('');
+  const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [tuPin, setTuPin] = useState('123456');
 
   // Modal PIN & Edit/Delete
@@ -96,7 +97,8 @@ export default function UnitManagement() {
       return;
     }
 
-    const userEmail = session.user.email;
+    const userEmail = session.user.email || '';
+    setCurrentUserEmail(userEmail); // Simpan email ke state untuk pencatatan
 
     // PROTEKSI EKSTRA: Jika Pakde mencoba masuk ke URL Kuttab/Wakpro secara paksa, tendang ke Dashboard!
     if (userEmail === 'pakde@kafmedan.com' && (slug === 'kuttab' || slug === 'wakpro')) {
@@ -141,8 +143,6 @@ export default function UnitManagement() {
     loadData();
   }, [slug, router]);
 
-  // Hak akses Input & Edit: Diizinkan jika BUKAN visitor
-  // (Karena Pakde rolenya 'pakde', maka isAuthorized bernilai TRUE, sehingga dia BISA input & edit)
   const isAuthorized = userRole !== '' && userRole !== 'visitor';
 
   // ==========================================
@@ -259,7 +259,8 @@ export default function UnitManagement() {
 
         await supabase.from('transactions').insert([{
           type: 'Pengeluaran', unit: 'Wakpro', program: 'Kas Kuttab',
-          description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: safeTimestamp
+          description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: safeTimestamp,
+          created_by: currentUserEmail
         }]);
       }
     
@@ -282,17 +283,18 @@ export default function UnitManagement() {
 
         await supabase.from('transactions').insert([{
           type: 'Pengeluaran', unit: sourceUnit, program: 'Alokasi Kas Bilistiwa',
-          description: `Alokasi Operasional Bilistiwa: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: safeTimestamp
+          description: `Alokasi Operasional Bilistiwa: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: safeTimestamp,
+          created_by: currentUserEmail
         }]);
       }
     
     } else {
-      // Menggunakan kategori pilihan untuk Masjid
       finalProgram = masjidSource;
     }
 
     await supabase.from('transactions').insert([{
-      type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: safeTimestamp
+      type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: safeTimestamp,
+      created_by: currentUserEmail
     }]);
 
     setLoading(false); setAmount(''); setDescription(''); setDonor(''); setCustomWakpro(''); setCustomKuttabSource(''); setCustomBilistiwaSource('');
@@ -328,13 +330,15 @@ export default function UnitManagement() {
     }
 
     await supabase.from('transactions').insert([{
-      type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: safeTimestamp
+      type: 'Pengeluaran', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: safeTimestamp,
+      created_by: currentUserEmail
     }]);
 
     if (slug === 'wakpro' && wakproCategory === 'Kas Kuttab') {
       await supabase.from('transactions').insert([{
         type: 'Pemasukan', unit: 'Kuttab', program: 'Kas Wakpro',
-        description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount, created_at: safeTimestamp
+        description: `Alokasi dari Kas Wakpro (Penerima: ${receiver})`, amount: numericAmount, created_at: safeTimestamp,
+        created_by: currentUserEmail
       }]);
     }
 
@@ -750,6 +754,8 @@ export default function UnitManagement() {
                       <th className="p-4 font-semibold border-r text-right text-red-700">Pengeluaran</th>
                       <th className="p-4 font-semibold border-r text-right text-blue-700">Sisa Saldo</th>
                       <th className="p-4 font-semibold border-r">Kategori</th>
+                      {/* KOLOM BARU: PENCATAT */}
+                      <th className="p-4 font-semibold border-r">Pencatat</th>
                       
                       {isAuthorized && (
                           <th className="p-4 font-semibold text-center">Tindakan</th>
@@ -757,7 +763,7 @@ export default function UnitManagement() {
                     </tr>
                   </thead>
                   <tbody>
-                    {loading ? <tr><td colSpan={7} className="p-10 text-center text-gray-500 font-medium animate-pulse">Menyiapkan buku kas...</td></tr> : 
+                    {loading ? <tr><td colSpan={8} className="p-10 text-center text-gray-500 font-medium animate-pulse">Menyiapkan buku kas...</td></tr> : 
                      processedTransactions.length > 0 ? processedTransactions.map((trx) => {
                         const tDate = new Date(trx.created_at);
                         const displayDate = `${String(tDate.getDate()).padStart(2,'0')}/${String(tDate.getMonth()+1).padStart(2,'0')}/${tDate.getFullYear()}`;
@@ -773,6 +779,10 @@ export default function UnitManagement() {
                                     {trx.program || '-'}
                                 </span>
                             </td>
+                            {/* DATA PENCATAT MUNCUL DI SINI */}
+                            <td className="p-4 border-r text-xs text-gray-400 font-medium truncate max-w-[120px]" title={trx.created_by || 'Sistem'}>
+                                {trx.created_by ? trx.created_by.split('@')[0] : 'Sistem'}
+                            </td>
 
                             {isAuthorized && (
                                 <td className="p-3 text-center whitespace-nowrap align-middle">
@@ -786,7 +796,7 @@ export default function UnitManagement() {
                             )}
                           </tr>
                         );
-                    }) : <tr><td colSpan={7} className="p-10 text-center text-gray-400 bg-gray-50">Belum ada catatan transaksi.</td></tr>}
+                    }) : <tr><td colSpan={8} className="p-10 text-center text-gray-400 bg-gray-50">Belum ada catatan transaksi.</td></tr>}
                   </tbody>
                 </table>
               </div>
