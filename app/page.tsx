@@ -74,6 +74,9 @@ export default function Dashboard() {
       );
   }
 
+  // Variabel Penanda Akun Pakde
+  const isPakde = userEmail === 'pakde@kafmedan.com';
+
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
       {/* Sidebar */}
@@ -99,10 +102,10 @@ export default function Dashboard() {
           <p className="text-gray-500 mt-2">Silakan pilih salah satu kartu unit di bawah ini untuk mengelola pencatatan.</p>
         </header>
 
-        {/* 4 Kolom Grid */}
+        {/* 4 Kolom Grid (Otomatis menyesuaikan jika ada kartu yang disembunyikan) */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           
-          {/* Kartu 1: Masjid */}
+          {/* Kartu 1: Masjid (Semua Bisa Lihat) */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
             <div>
               <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Masjid</span>
@@ -116,35 +119,39 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {/* Kartu 2: Kuttab */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
-            <div>
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Kuttab</span>
-              <p className="text-gray-500 text-sm mt-4 font-medium">Saldo Kas Kuttab</p>
-              <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.kuttab)}`}>
-                  Rp {formatRupiah(balances.kuttab)}
-              </h3>
+          {/* Kartu 2: Kuttab (Pakde TIDAK BISA Lihat) */}
+          {!isPakde && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
+              <div>
+                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Kuttab</span>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Saldo Kas Kuttab</p>
+                <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.kuttab)}`}>
+                    Rp {formatRupiah(balances.kuttab)}
+                </h3>
+              </div>
+              <Link href="/unit/kuttab" className="mt-8 text-blue-600 font-bold text-sm flex items-center justify-between group-hover:text-blue-700">
+                Kelola Kas & Laporan <span>→</span>
+              </Link>
             </div>
-            <Link href="/unit/kuttab" className="mt-8 text-blue-600 font-bold text-sm flex items-center justify-between group-hover:text-blue-700">
-              Kelola Kas & Laporan <span>→</span>
-            </Link>
-          </div>
+          )}
 
-          {/* Kartu 3: Wakpro */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
-            <div>
-              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Wakpro</span>
-              <p className="text-gray-500 text-sm mt-4 font-medium">Saldo Kas Wakpro</p>
-              <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.wakpro)}`}>
-                  Rp {formatRupiah(balances.wakpro)}
-              </h3>
+          {/* Kartu 3: Wakpro (Pakde TIDAK BISA Lihat) */}
+          {!isPakde && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
+              <div>
+                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Wakpro</span>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Saldo Kas Wakpro</p>
+                <h3 className="text-2xl lg:text-3xl font-extrabold text-gray-900 mt-1 truncate" title={`Rp ${formatRupiah(balances.wakpro)}`}>
+                    Rp {formatRupiah(balances.wakpro)}
+                </h3>
+              </div>
+              <Link href="/unit/wakpro" className="mt-8 text-amber-600 font-bold text-sm flex items-center justify-between group-hover:text-amber-700">
+                Kelola Kas & Laporan <span>→</span>
+              </Link>
             </div>
-            <Link href="/unit/wakpro" className="mt-8 text-amber-600 font-bold text-sm flex items-center justify-between group-hover:text-amber-700">
-              Kelola Kas & Laporan <span>→</span>
-            </Link>
-          </div>
+          )}
 
-          {/* Kartu 4: Bilistiwa (BARU) */}
+          {/* Kartu 4: Bilistiwa (Semua Bisa Lihat) */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-purple-500 flex flex-col justify-between hover:shadow-md transition-shadow group">
             <div>
               <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-md uppercase tracking-wider">Unit Bilistiwa</span>

@@ -62,7 +62,7 @@ export default function UnitManagement() {
   const [masjidSource, setMasjidSource] = useState('Infaq Umum');
   const [masjidCategory, setMasjidCategory] = useState('Operasional Masjid');
 
-  // Bilistiwa (BARU)
+  // Bilistiwa
   const [bilistiwaSource, setBilistiwaSource] = useState('Kas Masjid');
   const [customBilistiwaSource, setCustomBilistiwaSource] = useState('');
   const [bilistiwaCategory, setBilistiwaCategory] = useState('Gaji');
@@ -96,11 +96,20 @@ export default function UnitManagement() {
       return;
     }
 
-    const { data: userData } = await supabase.from('users').select('role').eq('email', session.user.email).single();
+    const userEmail = session.user.email;
+
+    // PROTEKSI EKSTRA: Jika Pakde mencoba masuk ke URL Kuttab/Wakpro secara paksa, tendang ke Dashboard!
+    if (userEmail === 'pakde@kafmedan.com' && (slug === 'kuttab' || slug === 'wakpro')) {
+       router.push('/');
+       return;
+    }
+
+    const { data: userData } = await supabase.from('users').select('role').eq('email', userEmail).single();
 
     let currentRole = userData?.role;
     if (!currentRole) {
-        if (session.user.email === 'visitor@kafmedan.com') currentRole = 'visitor';
+        if (userEmail === 'visitor@kafmedan.com') currentRole = 'visitor';
+        else if (userEmail === 'pakde@kafmedan.com') currentRole = 'pakde';
         else currentRole = 'tu'; 
     }
 
@@ -132,10 +141,12 @@ export default function UnitManagement() {
     loadData();
   }, [slug, router]);
 
+  // Hak akses Input & Edit: Diizinkan jika BUKAN visitor
+  // (Karena Pakde rolenya 'pakde', maka isAuthorized bernilai TRUE, sehingga dia BISA input & edit)
   const isAuthorized = userRole !== '' && userRole !== 'visitor';
 
   // ==========================================
-  // FITUR EDIT & DELETE DENGAN PIN TU
+  // FITUR EDIT & DELETE DENGAN PIN
   // ==========================================
   const handleActionClick = (trx: any, action: 'edit' | 'delete') => {
     if (!isAuthorized) return; 
@@ -233,7 +244,6 @@ export default function UnitManagement() {
     } else if (slug === 'kuttab') {
       finalProgram = kuttabSource === 'Kas Wakpro' ? 'Kas Wakpro' : (customKuttabSource || 'Lainnya');
       
-      // Auto Potong Wakpro untuk Kuttab
       if (kuttabSource === 'Kas Wakpro') {
         const { data: allWakproTrx } = await supabase.from('transactions').select('*').eq('unit', 'Wakpro');
         let currentWakproBal = 0;
@@ -256,7 +266,6 @@ export default function UnitManagement() {
     } else if (slug === 'bilistiwa') {
       finalProgram = bilistiwaSource === 'Lainnya' ? (customBilistiwaSource || 'Lainnya') : bilistiwaSource;
       
-      // Auto Potong Masjid atau Wakpro untuk Bilistiwa
       if (bilistiwaSource === 'Kas Masjid' || bilistiwaSource === 'Kas Wakpro') {
         const sourceUnit = bilistiwaSource === 'Kas Masjid' ? 'Masjid' : 'Wakpro';
         const { data: allSourceTrx } = await supabase.from('transactions').select('*').eq('unit', sourceUnit);
@@ -281,7 +290,6 @@ export default function UnitManagement() {
       finalProgram = masjidSource;
     }
 
-    // Insert Kas Masuk Unit Utama
     await supabase.from('transactions').insert([{
       type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: safeTimestamp
     }]);
@@ -387,7 +395,7 @@ export default function UnitManagement() {
   ];
 
   const generateConicGradient = (data: { [key: string]: number }, total: number) => {
-    if (total === 0) return '#f3f4f6'; // Warna abu-abu jika kosong
+    if (total === 0) return '#f3f4f6'; 
     let cumulativePercent = 0;
     const segments = Object.entries(data).map(([cat, amount], idx) => {
       const percent = (amount / total) * 100;
@@ -654,7 +662,6 @@ export default function UnitManagement() {
               </div>
             </div>
 
-            {/* DIAGRAM PIE / CHART */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row items-center gap-6">
@@ -721,7 +728,6 @@ export default function UnitManagement() {
 
             </div>
 
-            {/* Tabel Log */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 sm:p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <h3 className="font-bold text-gray-800">Log Transaksi ({processedTransactions.length} Data)</h3>
