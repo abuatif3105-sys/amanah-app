@@ -62,13 +62,20 @@ export default function UnitManagement() {
   const [masjidSource, setMasjidSource] = useState('Infaq Umum');
   const [masjidCategory, setMasjidCategory] = useState('Operasional Masjid');
 
+  // Bilistiwa (BARU)
+  const [bilistiwaSource, setBilistiwaSource] = useState('Kas Masjid');
+  const [customBilistiwaSource, setCustomBilistiwaSource] = useState('');
+  const [bilistiwaCategory, setBilistiwaCategory] = useState('Gaji');
+
+  // Konfigurasi Kategori
   const unitNameMap: { [key: string]: string } = {
     masjid: 'Kas Masjid',
     kuttab: 'Kas Kuttab',
-    wakpro: 'Kas Wakpro'
+    wakpro: 'Kas Wakpro',
+    bilistiwa: 'Kas Operasional Bilistiwa'
   };
 
-  const displayTitle = slug === 'masjid' ? 'Kas Masjid' : slug === 'wakpro' ? 'Kas Wakaf Produktif (Wakpro)' : 'Kas Kuttab';
+  const displayTitle = slug === 'masjid' ? 'Kas Masjid' : slug === 'wakpro' ? 'Kas Wakaf Produktif (Wakpro)' : slug === 'bilistiwa' ? 'Kas Operasional Bilistiwa' : 'Kas Kuttab';
 
   const kuttabExpenseCategories = [
     'KONSUMSI', 'LISTRIK', 'ATK', 'KEBERSIHAN', 'CETAK SPANDUK', 'CETAK KERTAS', 
@@ -77,6 +84,9 @@ export default function UnitManagement() {
   ];
   const wakproSources = ['Wakpro BETA', 'Wakpro OAE', 'Wakpro Tympano', 'Wakpro BERA', 'Wakpro Tumbler', 'Infaq Umum', 'Wakpro Lainnya'];
   const wakproCategories = ['Kas Kuttab', 'Operasional', 'Sarana dan Prasarana', "Ta'awun", 'Hadiah', 'Kafalah'];
+  
+  const bilistiwaIncomeSources = ['Kas Masjid', 'Kas Wakpro', 'Infaq Umum', "Ta'awun", 'Lainnya'];
+  const bilistiwaExpenseCategories = ['Gaji', 'Konsumsi', 'Transportasi', 'Listrik', 'Sampah', 'Bahan Bangunan', 'Perawatan Mesin', 'Perawatan Bangunan', 'Perlengkapan Masjid', 'Lainnya'];
 
   const loadData = async () => {
     setLoading(true);
@@ -102,7 +112,12 @@ export default function UnitManagement() {
     const { data: pinData } = await supabase.from('app_settings').select('setting_value').eq('setting_key', 'tu_pin').single();
     if (pinData) setTuPin(pinData.setting_value);
 
-    const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
+    // Identifikasi Unit Database
+    let unitLabel = 'Kuttab';
+    if (slug === 'masjid') unitLabel = 'Masjid';
+    else if (slug === 'wakpro') unitLabel = 'Wakpro';
+    else if (slug === 'bilistiwa') unitLabel = 'Bilistiwa';
+
     const { data: trxData } = await supabase
       .from('transactions')
       .select('*')
@@ -203,15 +218,22 @@ export default function UnitManagement() {
     const numericAmount = Number(amount);
     if (numericAmount <= 0) { setErrorMsg('Nominal harus lebih dari 0.'); setLoading(false); return; }
 
-    const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
+    let unitLabel = 'Kuttab';
+    if (slug === 'masjid') unitLabel = 'Masjid';
+    else if (slug === 'wakpro') unitLabel = 'Wakpro';
+    else if (slug === 'bilistiwa') unitLabel = 'Bilistiwa';
+
     let finalProgram = 'Infaq Umum'; let finalDesc = description;
     const safeTimestamp = `${customDate}T12:00:00`;
 
     if (slug === 'wakpro') {
       finalProgram = wakproSource === 'Wakpro Lainnya' ? (customWakpro || 'Wakpro Lainnya') : wakproSource;
       finalDesc = `Donatur/Muhsinin: ${donor || 'Hamba Allah'} - ${description}`;
+    
     } else if (slug === 'kuttab') {
       finalProgram = kuttabSource === 'Kas Wakpro' ? 'Kas Wakpro' : (customKuttabSource || 'Lainnya');
+      
+      // Auto Potong Wakpro untuk Kuttab
       if (kuttabSource === 'Kas Wakpro') {
         const { data: allWakproTrx } = await supabase.from('transactions').select('*').eq('unit', 'Wakpro');
         let currentWakproBal = 0;
@@ -230,15 +252,41 @@ export default function UnitManagement() {
           description: `Alokasi ke Kas Kuttab: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: safeTimestamp
         }]);
       }
+    
+    } else if (slug === 'bilistiwa') {
+      finalProgram = bilistiwaSource === 'Lainnya' ? (customBilistiwaSource || 'Lainnya') : bilistiwaSource;
+      
+      // Auto Potong Masjid atau Wakpro untuk Bilistiwa
+      if (bilistiwaSource === 'Kas Masjid' || bilistiwaSource === 'Kas Wakpro') {
+        const sourceUnit = bilistiwaSource === 'Kas Masjid' ? 'Masjid' : 'Wakpro';
+        const { data: allSourceTrx } = await supabase.from('transactions').select('*').eq('unit', sourceUnit);
+        let currentSourceBal = 0;
+        allSourceTrx?.forEach(t => {
+          if (t.type === 'Pemasukan') currentSourceBal += Number(t.amount);
+          else currentSourceBal -= Number(t.amount);
+        });
+
+        if (numericAmount > currentSourceBal) {
+          setErrorMsg(`Gagal: Saldo ${bilistiwaSource} tidak mencukupi (Sisa: Rp ${currentSourceBal.toLocaleString('id-ID')})!`);
+          setLoading(false); return;
+        }
+
+        await supabase.from('transactions').insert([{
+          type: 'Pengeluaran', unit: sourceUnit, program: 'Alokasi Kas Bilistiwa',
+          description: `Alokasi Operasional Bilistiwa: ${description || 'Tanpa keterangan'}`, amount: numericAmount, created_at: safeTimestamp
+        }]);
+      }
+    
     } else {
       finalProgram = masjidSource;
     }
 
+    // Insert Kas Masuk Unit Utama
     await supabase.from('transactions').insert([{
       type: 'Pemasukan', unit: unitLabel, program: finalProgram, description: finalDesc, amount: numericAmount, created_at: safeTimestamp
     }]);
 
-    setLoading(false); setAmount(''); setDescription(''); setDonor(''); setCustomWakpro(''); setCustomKuttabSource('');
+    setLoading(false); setAmount(''); setDescription(''); setDonor(''); setCustomWakpro(''); setCustomKuttabSource(''); setCustomBilistiwaSource('');
     setSuccessMsg(`✅ Kas Masuk ${displayTitle} berhasil dicatat!`);
     loadData();
   };
@@ -252,13 +300,21 @@ export default function UnitManagement() {
     if (numericAmount <= 0) { setErrorMsg('Nominal harus lebih dari 0.'); setLoading(false); return; }
     if (numericAmount > finalCalculatedBalance) { setErrorMsg(`Gagal: Saldo ${displayTitle} tidak mencukupi!`); setLoading(false); return; }
 
-    const unitLabel = slug === 'masjid' ? 'Masjid' : slug === 'wakpro' ? 'Wakpro' : 'Kuttab';
+    let unitLabel = 'Kuttab';
+    if (slug === 'masjid') unitLabel = 'Masjid';
+    else if (slug === 'wakpro') unitLabel = 'Wakpro';
+    else if (slug === 'bilistiwa') unitLabel = 'Bilistiwa';
+
     let finalProgram = masjidCategory; let finalDesc = description;
     const safeTimestamp = `${customDate}T12:00:00`;
 
-    if (slug === 'kuttab') finalProgram = kuttabCategory;
-    else if (slug === 'wakpro') { 
+    if (slug === 'kuttab') {
+        finalProgram = kuttabCategory;
+    } else if (slug === 'wakpro') { 
         finalProgram = wakproCategory; 
+        finalDesc = `Penerima: ${receiver} - ${description}`; 
+    } else if (slug === 'bilistiwa') {
+        finalProgram = bilistiwaCategory;
         finalDesc = `Penerima: ${receiver} - ${description}`; 
     }
 
@@ -343,7 +399,6 @@ export default function UnitManagement() {
     return `conic-gradient(${segments.join(', ')})`;
   };
 
-
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
       <aside className="w-full md:w-64 bg-emerald-700 text-white flex flex-row md:flex-col justify-between items-center md:items-stretch p-4 md:p-6 shadow-md">
@@ -399,7 +454,7 @@ export default function UnitManagement() {
         {errorMsg && <div className="mb-6 p-4 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm font-medium">{errorMsg}</div>}
 
         {/* =========================================================================
-            TAMPILAN KAS MASUK (Sangat Dibatasi) 
+            TAMPILAN KAS MASUK 
         ========================================================================== */}
         {activeTab === 'masuk' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -409,6 +464,23 @@ export default function UnitManagement() {
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Tanggal Transaksi</label>
                   <input type="date" required value={customDate} onChange={e=>setCustomDate(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-emerald-500" />
                </div>
+
+               {slug === 'bilistiwa' && (
+                 <>
+                   <div>
+                     <label className="block text-xs font-semibold text-gray-700 mb-1">Sumber Dana Bilistiwa</label>
+                     <select value={bilistiwaSource} onChange={e=>setBilistiwaSource(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-gray-50">
+                        {bilistiwaIncomeSources.map(s => <option key={s} value={s}>{s}</option>)}
+                     </select>
+                     {(bilistiwaSource === 'Kas Masjid' || bilistiwaSource === 'Kas Wakpro') && (
+                        <p className="text-xs text-amber-600 font-semibold mt-1.5">⚠️ Saldo {bilistiwaSource} akan terpotong otomatis.</p>
+                     )}
+                   </div>
+                   {bilistiwaSource === 'Lainnya' && (
+                     <input type="text" required placeholder="Sebutkan sumber lainnya..." value={customBilistiwaSource} onChange={e=>setCustomBilistiwaSource(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm mt-2 bg-gray-50 focus:bg-white" />
+                   )}
+                 </>
+               )}
 
                {slug === 'wakpro' && (
                  <>
@@ -473,7 +545,7 @@ export default function UnitManagement() {
         )}
 
         {/* =========================================================================
-            TAMPILAN KAS KELUAR (Sangat Dibatasi)
+            TAMPILAN KAS KELUAR 
         ========================================================================== */}
         {activeTab === 'keluar' && isAuthorized && (
           <div className="max-w-xl bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200">
@@ -483,6 +555,15 @@ export default function UnitManagement() {
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Tanggal Transaksi</label>
                   <input type="date" required value={customDate} onChange={e=>setCustomDate(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-red-500" />
                </div>
+
+               {slug === 'bilistiwa' && (
+                 <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Kategori Pengeluaran Bilistiwa</label>
+                    <select value={bilistiwaCategory} onChange={e=>setBilistiwaCategory(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-gray-50">
+                       {bilistiwaExpenseCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                 </div>
+               )}
 
                {slug === 'wakpro' && (
                  <div>
@@ -514,7 +595,7 @@ export default function UnitManagement() {
                  </div>
                )}
 
-               {slug === 'wakpro' && (
+               {(slug === 'wakpro' || slug === 'bilistiwa') && (
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Penerima</label>
                     <input type="text" required placeholder="Siapa penerima dananya?" value={receiver} onChange={e=>setReceiver(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-red-500" />
@@ -544,7 +625,6 @@ export default function UnitManagement() {
         {activeTab === 'laporan' && (
           <div className="space-y-6">
             
-            {/* Filter Laporan */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
               <h3 className="font-bold text-gray-800 mb-4 text-sm sm:text-base">🔍 Filter Laporan</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
@@ -577,7 +657,6 @@ export default function UnitManagement() {
             {/* DIAGRAM PIE / CHART */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               
-              {/* Pie Chart Pemasukan */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row items-center gap-6">
                  <div 
                     className="w-32 h-32 rounded-full shrink-0 shadow-inner border border-gray-100" 
@@ -609,7 +688,6 @@ export default function UnitManagement() {
                  </div>
               </div>
 
-              {/* Pie Chart Pengeluaran */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row items-center gap-6">
                  <div 
                     className="w-32 h-32 rounded-full shrink-0 shadow-inner border border-gray-100" 
@@ -663,7 +741,6 @@ export default function UnitManagement() {
                       <th className="p-4 font-semibold border-r text-right text-blue-700">Sisa Saldo</th>
                       <th className="p-4 font-semibold border-r">Kategori</th>
                       
-                      {/* KOLOM AKSI: HANYA MUNCUL JIKA isAuthorized TRUE */}
                       {isAuthorized && (
                           <th className="p-4 font-semibold text-center">Tindakan</th>
                       )}
@@ -687,7 +764,6 @@ export default function UnitManagement() {
                                 </span>
                             </td>
 
-                            {/* TOMBOL AKSI: HANYA MUNCUL JIKA isAuthorized TRUE */}
                             {isAuthorized && (
                                 <td className="p-3 text-center whitespace-nowrap align-middle">
                                     <button onClick={() => handleActionClick(trx, 'edit')} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-md mx-1 font-semibold text-xs shadow-sm cursor-pointer transition-colors">
