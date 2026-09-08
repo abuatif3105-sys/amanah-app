@@ -15,7 +15,7 @@ export default function ManajemenUser() {
   const [editId, setEditId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ 
     email: '', 
-    role: 'superadmin', 
+    role: 'PENGURUS', 
     allowed_units: ['Masjid', 'Kuttab', 'Wakpro', 'Bilistiwa'] 
   });
   const [msg, setMsg] = useState('');
@@ -61,11 +61,11 @@ export default function ManajemenUser() {
       }).eq('id', editId);
        
       if (!error) { 
-        setMsg('✅ Berhasil diperbarui!'); 
+        setMsg('Berhasil diperbarui.'); 
         setFormOpen(false); 
         loadUsers(); 
       } else {
-        setMsg('❌ Gagal: ' + error.message);
+        setMsg('Gagal: ' + error.message);
       }
     } else {
       const { error } = await supabase.from('users').insert([{ 
@@ -75,11 +75,11 @@ export default function ManajemenUser() {
       }]);
 
       if (!error) { 
-        setMsg('✅ Pengguna berhasil ditambahkan!'); 
+        setMsg('Pengguna berhasil ditambahkan.'); 
         setFormOpen(false); 
         loadUsers(); 
       } else {
-        setMsg('❌ Gagal: ' + error.message);
+        setMsg('Gagal: ' + error.message);
       }
     }
   };
@@ -90,14 +90,14 @@ export default function ManajemenUser() {
       setEditId(u.id);
       setFormData({ 
         email: u.email, 
-        role: u.role || 'superadmin', 
+        role: u.role || 'PENGURUS', 
         allowed_units: u.allowed_units || allUnits 
       });
     } else {
       setEditId(null);
       setFormData({ 
         email: '', 
-        role: 'superadmin', 
+        role: 'PENGURUS', 
         allowed_units: allUnits 
       });
     }
@@ -126,7 +126,7 @@ export default function ManajemenUser() {
             <thead>
               <tr className="bg-gray-100 border-b border-gray-200">
                 <th className="p-4 font-bold text-gray-700">Email Akun</th>
-                <th className="p-4 font-bold text-gray-700">Tipe Akses</th>
+                <th className="p-4 font-bold text-gray-700">Peran</th>
                 <th className="p-4 font-bold text-gray-700">Unit yang Diizinkan</th>
                 <th className="p-4 font-bold text-center">Tindakan</th>
               </tr>
@@ -136,8 +136,8 @@ export default function ManajemenUser() {
                 <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="p-4 font-semibold text-gray-800">{u.email}</td>
                   <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase ${u.role === 'visitor' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                      {u.role === 'visitor' ? 'Lihat Saja' : 'Pengelola (Input/Edit)'}
+                    <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase ${u.role === 'VIEWER' || u.role === 'visitor' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                      {u.role === 'VIEWER' || u.role === 'visitor' ? 'Hanya Lihat' : 'Pengurus (Input/Edit)'}
                     </span>
                   </td>
                   <td className="p-4">
@@ -175,19 +175,20 @@ export default function ManajemenUser() {
                   value={formData.email} 
                   onChange={e => setFormData({ ...formData, email: e.target.value })} 
                   className="w-full border p-3 rounded-xl bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" 
-                  placeholder="wakendang@kafmedan.com" 
+                  placeholder="nama@kafmedan.com" 
                 />
               </div>
               
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Tipe Akses</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Peran / Jabatan</label>
                 <select 
                   value={formData.role} 
                   onChange={e => setFormData({ ...formData, role: e.target.value })} 
                   className="w-full border p-3 rounded-xl bg-gray-50 text-sm focus:bg-white outline-none"
                 >
-                  <option value="superadmin">Pengelola (Bisa Input & Edit)</option>
-                  <option value="visitor">Visitor (Hanya Lihat Laporan)</option>
+                  <option value="PENGURUS">Pengurus (Bisa Catat & Edit Kas)</option>
+                  <option value="VIEWER">Viewer (Hanya Lihat Laporan)</option>
+                  <option value="BENDAHARA">Bendahara</option>
                 </select>
               </div>
 
